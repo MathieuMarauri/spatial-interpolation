@@ -1,0 +1,11 @@
+# R specific files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# HTML files
+.html
+
+# doc folder
+doc
