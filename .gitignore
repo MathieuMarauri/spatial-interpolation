@@ -9,3 +9,6 @@
 
 # doc folder
 doc
+
+# test file
+src/test.R
