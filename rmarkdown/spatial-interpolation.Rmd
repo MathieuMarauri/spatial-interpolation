@@ -1,0 +1,154 @@
+---
+title: "Spatial interpolation"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+    toc_depth: 2
+    theme: cerulean
+    highlight: tango
+    css: style.css
+bibliography: biblio.bib
+biblio-style: "apalike"
+link-citations: true
+---
+
+```{r initial_chunk, echo = FALSE, warning = FALSE, message = FALSE}
+library("knitr")
+opts_chunk$set(echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE, vcache = FALSE, fig.align = 'center', dpi = 300, out.width = '75%')
+```
+
+```{r set-up}
+library("ggplot2") # data visualisation
+
+# Set default ggplot theme
+theme_set(
+  theme_light(
+  base_size = 20
+  ) +
+  theme(
+    text = element_text(family = "Gibson", colour = "gray10"),
+    panel.border = element_blank(),
+    axis.line = element_line(colour = "gray50", size = .5),
+    axis.ticks = element_blank(),
+    strip.background = element_rect(colour = "gray50", fill = "transparent", size = .7),
+    strip.text.x = element_text(colour = "gray10"),
+    strip.text.y = element_text(colour = "gray10"),
+    legend.key.size = unit(1.5, "cm")
+  )
+)
+
+# Set default scales
+scale_colour_continuous <- function(...) ggplot2::scale_colour_viridis_c(..., option = "viridis")
+scale_colour_discrete <- function(...) ggplot2::scale_colour_viridis_d(..., option = "viridis")
+scale_fill_continuous <- function(...) ggplot2::scale_fill_viridis_c(..., option = "viridis")
+scale_fill_discrete <- function(...) ggplot2::scale_fill_viridis_d(..., option = "viridis")
+```
+
+
+TODO : Introduction
+
+#### The mathematical problem
+
+Let's say you have $n$ measures $z_1, \dots, z_n$ of some variable $Z$ at $n$ points in some region of space $R \subset \in \mathbb{R}^2$. You want to know the value of $Z$ at every points in that region $R$. You have to define a function that for each point $(x, y) \in R$ associates a value $z \in \mathbb{R}$.
+
+$$
+\begin{equation} 
+(x, y) \in \mathbb{R}^2 \rightarrow z \in \mathbb{R}
+\end{equation} 
+$$
+
+The only input data as your disposal are $n$ estimations of $f$ at sample points $s_1, \dots , s_n$, $s_i \in \mathbb{R}^2, i = 1 \dots n$. 
+
+Different methods exists [see @overview] and most have the same general formula. The prediction $\widehat{z_0}$ for a point $s_0 \in \mathbb{R}^2$ is given by the following relation:
+
+$$
+\begin{equation} 
+\widehat{z_0} = \sum_{i = 1}^{n}\lambda_i z_i
+\end{equation} 
+$$
+
+The way the weights $\lambda_1, \dots , \lambda_n$ is different for each methods. 4 methods are presented in this document: 
+
+* Inverse Distance Weighting (IDW), 
+* Triangular Irregular Networks (TIN), 
+* Gaussian Process (GP)
+* Kriging
+
+#### A simple map as a case study
+
+To illustrate the different methods we will use a simple use case, a simulated normal variable on a $[0, 100] \times [0, 100]$ grid. A random sample of 100 points are selected and will be used as the basis for the spatial interpolation. 
+
+```{r grid}
+simulated_grid <- read.table("../data/simulation.txt", header = TRUE)
+set.seed(123)
+sample_points <- simulated_grid[sample(1:10201, 100), ]
+ggplot(
+  data = simulated_grid,
+  mapping = aes(x = x, y = y, fill = z)
+) +
+  geom_tile() +
+  geom_point(
+    data = sample_points,
+    mapping = aes(x = x, y = y)
+  ) + 
+  guides(
+    fill = guide_colorbar(title.vjust = 0.8)
+  ) +
+  labs(
+    title = "The 100 sample points on the true map"
+  ) +
+  theme_void() +
+  theme(
+    legend.position = 'bottom'
+  )
+```
+
+For each method, a more challenging use case will also be presented. 
+
+# Inverse Distance Weighting
+
+## How it works
+
+This methods uses the previous equation to predict new values. The weights $\lambda_1, \dots , \lambda_n$ are defined by taking the inverse of the distance between the point to predict, $s_0$, and the sample points, at a pecific power $p$. This method directly considers that the closer a point is to another the more alike they are. For $s_0$, $\forall i = 1\dots n$ and $p \in \mathbb{N}$,
+
+$$
+\begin{equation}
+\lambda_i = \frac{\frac{1}{dist(s_0, s_j)^p}}{\frac{1}{\sum_{j=1}^{n}dist(s_0, s_j)^p}}
+\end{equation}
+$$
+
+The distance used is usually the euclidean distance $dist(a, b) = ||a-b||^2$. The parameter $p$ define the rate at which the influence of a point to another decreases. The higher $p$ the fastest the decrease of influence.
+
+```{r power}
+x_seq <- seq(0, 10, length.out = 11)
+ggplot(
+  data = data.frame(
+    x = rep(x_seq, 5),
+    y = c(1 / x_seq^0, 1 / x_seq^1, 1 / x_seq^2, 1 / x_seq^3, 1 / x_seq^4),
+    color = rep(as.character(0:4), each = 11)
+  ), 
+  mapping = aes(x = x, y = y, color = color)
+) + 
+  geom_line()
+```
+
+## Application on simple case
+
+
+
+# Help
+
+$$
+\begin{equation} 
+\begin{split}
+\mathrm{Var}(\hat{\beta}) & =\mathrm{Var}((X'X)^{-1}X'y)\\
+ & =(X'X)^{-1}X'\mathrm{Var}(y)((X'X)^{-1}X')'\\
+ & =(X'X)^{-1}X'\mathrm{Var}(y)X(X'X)^{-1}\\
+ & =(X'X)^{-1}X'\sigma^{2}IX(X'X)^{-1}\\
+ & =(X'X)^{-1}\sigma^{2}
+\end{split}
+\end{equation} 
+$$
+
+# References
