@@ -8,7 +8,8 @@ library("data.table") # dataset manipulation
 # library("dplyr") # dataset manipulation
 library("geoR") # geostatistical analysis
 library("ggplot2") # data visualisation
-library("tidyr") # data tidying
+library("magrittr") # pipe operators
+# library("tidyr") # data tidying
 
 # Set default ggplot theme
 theme_set(
@@ -59,7 +60,8 @@ ggplot(
 
 # Sample 100 points
 set.seed(1234)
-sample_points <- grid[sample(1:nrow(grid), 100)]
+n_sample <- 100
+sample_points <- grid[sample(1:nrow(grid), n_sample)]
 
 # Visualisation of the data sampled
 ggplot(
@@ -83,8 +85,91 @@ ggplot(
   )
 
 
+# Variogram -----------------------------------------------------------------------------------
+
+# Define the empirical variogram.
+
+# Distance matrix between all points
+dist_matrix <- dist(sample_points[, .(x, y)])
+
+# Coerce matrix to long table
+dist_matrix <- dist_matrix %>%
+  as.matrix() %>%
+  as.data.table() %>%
+  .[, point_a := 1:n_sample] %>%
+  melt(
+    id.vars = "point_a",
+    variable.name = "point_b",
+    value.name = "distance"
+  ) %>%
+  .[, point_b := as.numeric(point_b)]
+
+# Compute the variogram (variance of z(si) - z(sj) since mean is supposed to be the same by
+# stationarity)
+vario_matrix <- outer(
+  X = sample_points$z,
+  Y = sample_points$z,
+  FUN = function(x, y) (x - y)^2 / 2
+)
+
+# Coerce to long table
+vario_matrix <- vario_matrix %>%
+  as.data.table() %>%
+  setNames(as.character(1:n_sample)) %>%
+  .[, point_a := 1:n_sample] %>%
+  melt(
+    id.vars = "point_a",
+    variable.name = "point_b",
+    value.name = "semi_variance"
+  ) %>%
+  .[, point_b := as.numeric(point_b)]
+
+# Build one table from distance and variogram
+point_variogram <- merge(
+  x = dist_matrix,
+  y = vario_matrix,
+  by = c("point_a", "point_b"),
+  all = TRUE,
+  sort = FALSE
+)
+
+# Visualisation of the variogram scatter plot
+ggplot(
+  data = point_variogram,
+  mapping = aes(x = distance, y = semi_variance)
+) +
+  geom_point(
+    alpha = .3
+  ) +
+  labs(
+    x = "Distance",
+    y = latex2exp::TeX("$\\frac{(Z(s_i) - Z(s_j))^2}{2}$"),
+    title = "Semi-variance by pair of points"
+  )
+
+# Create classes of distance on which average semi variance will be computed
+point_variogram[, group1 := cut(distance, 15)]
+
+# Compute the avegare semi-variance by distance group
+empirical_variogram <- point_variogram[, .(vario_mean = mean(semi_variance)), by = group1]
+
+# Visualisation of the empirical variogram
+ggplot(
+  data = empirical_variogram,
+  mapping = aes(x = group1, y = vario_mean)
+) +
+  geom_point() +
+  labs(
+    x = "Distance",
+    y = latex2exp::TeX("$\\sum_{i = 1}^{N_h}\\frac{(Z(s_{i+h}) - Z(s_i))^2}{2N_h}$"),
+    title = "Empirical variogram"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
 
 
+geodata <- as.geodata(sample_points)
 
 # 1.3 Variogramme -----------------------------------------------------------------------------
 
