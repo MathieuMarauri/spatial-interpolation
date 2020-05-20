@@ -6,7 +6,33 @@
 
 library("data.table") # Fast dataset manipulation
 library("ggplot2") # Data visualisations using the Grammar of Graphics
+library("gstat") # Geostatistical modelling
 import::from("fields", "rdist") # rdist function
+library("sf") # Spatial data manipulation
+source("src/helpers.R") # Load custom functions
+
+# Set default ggplot theme
+theme_set(
+  theme_light(
+  base_size = 20
+  ) +
+  theme(
+    text = element_text(family = "Gibson", colour = "gray10"),
+    panel.border = element_blank(),
+    axis.line = element_line(colour = "gray50", size = .5),
+    axis.ticks = element_blank(),
+    strip.background = element_rect(colour = "gray50", fill = "transparent", size = .7),
+    strip.text.x = element_text(colour = "gray10"),
+    strip.text.y = element_text(colour = "gray10"),
+    legend.key.size = unit(1.5, "cm")
+  )
+)
+
+# Set default scales
+scale_colour_continuous <- function(...) ggplot2::scale_colour_viridis_c(..., option = "viridis")
+scale_colour_discrete <- function(...) ggplot2::scale_colour_viridis_d(..., option = "viridis")
+scale_fill_continuous <- function(...) ggplot2::scale_fill_viridis_c(..., option = "viridis")
+scale_fill_discrete <- function(...) ggplot2::scale_fill_viridis_d(..., option = "viridis")
 
 
 # Simple case ---------------------------------------------------------------------------------
@@ -52,8 +78,18 @@ weights <- sweep(
 # Multiply the weights matrix with the z value of the sample points
 pred <- weights %*% sample_points$z
 
+# Add value of sample points
+pred[is.na(pred)] <- sample_points$z
+
 # Plot the result alongside the true data
 data.table(simulated_grid[, c("x", "y")], "pred" = pred[, 1], "true" = simulated_grid$z) %>%
+  merge(
+    y = sample_points,
+    by = c("x", "y"),
+    all.x = TRUE
+  ) %>%
+  .[is.na(pred), pred := z] %>%
+  .[, z := NULL] %>%
   melt(
     id.vars = c("x", "y"),
     variable.name = "type",
@@ -109,4 +145,37 @@ ggplot(
 
 # Using specific functions --------------------------------------------------------------------
 
-gstat::id
+# Directly compute the idw using function idw from gstat package.
+pred_gstat <- idw(
+  formula = z ~ 1,
+  locations = ~ x + y,
+  data = sample_points,
+  newdata = simulated_grid[, c("x", "y")],
+  idp = 5
+)
+names(pred_gstat) <- c("x", "y", "z", "var")
+
+data.table(simulated_grid[, c("x", "y")], "idw_base" = pred[, 1], "idw_gstat" = pred_gstat$z) %>%
+  merge(
+    y = sample_points,
+    by = c("x", "y"),
+    all.x = TRUE
+  ) %>%
+  .[is.na(idw_base), idw_base := z] %>%
+  .[, z := NULL] %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+  plot_map("Prediction with IDW and gstat IDW") +
+  facet_grid(cols = vars(type)) +
+  theme(
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
+  )
+
+
+# Interpolation with spatial constraints ------------------------------------------------------
+
+
