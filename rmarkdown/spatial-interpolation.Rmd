@@ -4,7 +4,7 @@ output:
   html_document:
     code_folding: show
     toc: true
-    toc_depth: 2
+    toc_depth: 3
     theme: cerulean
     highlight: tango
     css: style.css
@@ -17,7 +17,6 @@ link-citations: true
 MathJax.Hub.Config({
   TeX: { 
       equationNumbers: {
- 
             autoNumber: "all",
       } 
   }
@@ -32,25 +31,29 @@ opts_chunk$set(echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE, vcac
 ```
 
 ```{r set-up}
+library("cowplot") # Export plots
+library("data.table") # Fast dataset manipulation
 import::from("fields", "rdist") # rdist function
-library("ggplot2") # data visualisation
-library("magrittr") # pipe operators
-library("tidyr") # pivot tables
+library("ggplot2") # Data visualisations using the Grammar of Graphics
+library("ggrepel") # Text lables
+library("gstat") # Geostatistical modelling
+library("magrittr") # Pipe operators
+source("../src/helpers.R") # Load custom functions
 
 # Set default ggplot theme
 theme_set(
   theme_light(
-  base_size = 20
+  base_size = 12
   ) +
   theme(
     text = element_text(family = "Gibson", colour = "gray10"),
     panel.border = element_blank(),
     axis.line = element_line(colour = "gray50", size = .5),
-    axis.ticks = element_blank(),
+    # axis.ticks = element_blank(),
     strip.background = element_rect(colour = "gray50", fill = "transparent", size = .7),
     strip.text.x = element_text(colour = "gray10"),
     strip.text.y = element_text(colour = "gray10"),
-    legend.key.size = unit(1.5, "cm")
+    legend.key.size = unit(.7, "cm")
   )
 )
 
@@ -91,28 +94,15 @@ The way the weights $\lambda_1, \dots , \lambda_n$ is different for each methods
 
 To illustrate the different methods we will use a simple use case, a simulated normal variable, $Z$, on a $[0, 100] \times [0, 100]$ grid. A random sample of 100 points are selected and will be used as the basis for the spatial interpolation. 
 
-```{r grid}
-simulated_grid <- read.table("../data/simulation.txt", header = TRUE)
+```{r grid, out.width="100%"}
+simulated_grid <- readRDS("../data/grf_spheric_01x01.rds")
 set.seed(123)
 sample_points <- simulated_grid[sample(1:10201, 100), ]
-ggplot(
-  data = simulated_grid,
-  mapping = aes(x = x, y = y, fill = z)
-) +
-  geom_tile() +
+plot_map(simulated_grid, "The 100 sample points on the true map") +
   geom_point(
     data = sample_points,
-    mapping = aes(x = x, y = y)
-  ) + 
-  guides(
-    fill = guide_colorbar(title.vjust = 0.8)
-  ) +
-  labs(
-    title = "The 100 sample points on the true map"
-  ) +
-  theme_void() +
-  theme(
-    legend.position = 'bottom'
+    mapping = aes(x = x, y = y),
+    size = 1
   )
 ```
 
@@ -132,15 +122,32 @@ The distance used is usually the euclidean distance $dist(a, b) = ||a-b||^2$. Th
 
 ```{r power}
 x_seq <- seq(0, 10, length.out = 11)
-ggplot(
-  data = data.frame(
+data <- data.table(
     x = rep(x_seq, 5),
     y = c(1 / x_seq^0, 1 / x_seq^1, 1 / x_seq^2, 1 / x_seq^3, 1 / x_seq^4),
     color = rep(as.character(0:4), each = 11)
-  ), 
-  mapping = aes(x = x, y = y, color = color)
+  ) %>% 
+  .[x == 3, label := paste("p =", color), by = color]
+ggplot(
+  data = data, 
+  mapping = aes(x = x, y = y, color = color, group = color)
 ) + 
-  geom_line()
+  geom_line(
+    show.legend = FALSE
+  ) + 
+  scale_x_continuous(
+    breaks = seq(2, 10, length.out = 5)
+  ) + 
+  geom_label_repel(
+    mapping = aes(label = label),
+    nudge_x = 1,
+    show.legend = FALSE
+  ) + 
+  labs(
+    x = "Distance",
+    y = "Weight",
+    title = "Comparison of different power orders"
+  )
 ```
 
 ## The simple case study
@@ -149,24 +156,34 @@ First let's apply IDW on our simple sample points. Recall we have 100 points and
 
 Building the interpolated map means making a prediction for each point in the grid. What we have to do is then to compute the distance matrix between each point and the sample points, use these distances to build the weights and build our prediction according to equation 2 $\widehat{z_0} = \sum_{i = 1}^{n}\lambda_i z_i$. 
 
-```{r idw, echo = TRUE}
+### Step by step code {#idw-step-by-step}
+
+The process to make predictions on the grid is presented in the following code. Of course specific functions exist to do just that but let's break it piece by piece first. 
+
+The order used here is 5, we will see later on how to define this value.
+
+```{r idw_base, echo = TRUE}
 # First compute the distance matrix between all points of the grid and all sample points
 distance <- rdist(simulated_grid[, c("x", "y")], sample_points[, c("x", "y")])
 
+# Define the power order
+p <- 5
+
 # Take the inverse of every element
 weights <- apply(
-  X = distance, 
+  X = distance,
   MARGIN = 1:2,
-  FUN = function(x) 1 / x
+  FUN = function(x) 1 / x^p
 )
 
-# Substract (FUN = "-") row sums (STATS = row_sums) to every element of the weights matrix (x = weights) row wise (MARGIN = 1)
+# Divide (FUN = "/") the weights by the row sum (STATS = rowSums(weights)) to every element of the
+# weights matrix (x = weights) row wise (MARGIN = 1)
 weights <- sweep(
-  x = weights, 
-  MARGIN = 1, 
-  STATS = 1 / rowSums(distance), 
-  FUN = "-"
-) 
+  x = weights,
+  MARGIN = 1,
+  STATS = rowSums(weights),
+  FUN = "/"
+)
 
 # Multiply the weights matrix with the z value of the sample points
 pred <- weights %*% sample_points$z
@@ -175,37 +192,138 @@ pred <- weights %*% sample_points$z
 We can now visualize our final prediction and compare it to the real data.
 
 ```{r idw_pred_map}
-cbind(simulated_grid[, c("x", "y")], Precition = pred, "Real data" = simulated_grid$z) %>%
-  pivot_longer(cols = Precition:`Real data`, names_to = "type", values_to = "Z") %>%
-  ggplot(
-    mapping = aes(x = x, y = y, fill = Z)
+type_lables <- c("IDW map", "Real map")
+names(type_lables) <- c("pred", "true")
+data.table(simulated_grid[, c("x", "y")], "pred" = pred[, 1], "true" = simulated_grid$z) %>%
+  merge(
+    y = sample_points,
+    by = c("x", "y"),
+    all.x = TRUE
+  ) %>%
+  .[is.na(pred), pred := z] %>%
+  .[, z := NULL] %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+plot_map("Prediction with IDW and real data") +
+  facet_grid(
+    cols = vars(type),
+    labeller = labeller(type = type_lables)
   ) +
-  geom_tile() +
-  geom_tile(
-    data = sample_points,
-    mapping = aes(x = x, y = y),
-    fill = "black"
-  ) +
-  guides(
-    fill = guide_colorbar(title.vjust = 0.8)
-  ) +
-  facet_grid(cols = vars(type)) +
-  labs(
-    title = "Prediction with IDW and real data"
-  ) +
-  scale_x_continuous(
-    expand = c(0, 0)
-  ) +
-  scale_y_continuous(
-    expand = c(0, 0)
-  ) +
-  theme_void() +
   theme(
-    legend.position = 'bottom',
-    strip.text = element_text(size = 12)
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
   )
 ```
 
+The map is globally the same but much more smooth. It displays some "bubbles" around the sample points which is of course coherent with the fact that each point has a strong influence only on its immediate neighborhood.
+
+### Choosing the order $p$
+
+The order $p$ was set to 5 in the previous model. Why not 3 or 6 or even 10? The choice of $p$ depends on the data you have and one should always try to find the most appropriate value. One way to do so is to evaluate the error of prediction using a leave-one-out estimation. For each point in the sample a prediction is made using all the other points. The estimation of the error is then the average error observed. 
+
+More specifically if we have for $n$ points $s_1, \dots, s_n$, the leave-one-out error estimation is computed as follows:
+
+$$
+E_{LOO} = \sqrt{\frac{1}{n} \sum_{i=1}^{n}(z_i - \sum_{j=1, j \ne i}^{n}\lambda_j z_j)^2}
+$$
+
+The weights are computed as defined in equation 3. This error is computed for different values of $p$ and the value of $p$ that minimizes the error is to be chosen. 
+
+The following piece of code illustrates this method. The error is estimated for $p = 1\dots 20$.
+
+```{r loo, echo = TRUE}
+rmse_errors <- sapply(
+  X = 1:20, # Values of p
+  FUN = function(p) { # Compute the RMSE estimation for each value of p
+    pred_sample <- numeric(length = 100)
+    for (i in length(pred_sample)) {
+      # Predict point i and remove it from sample points
+      distance <- rdist(sample_points[i, c("x", "y")], sample_points[-i, c("x", "y")])
+      weights <- apply(
+        X = distance,
+        MARGIN = 1:2,
+        FUN = function(x) 1 / x^p
+      )
+      weights <- sweep(
+        x = weights,
+        MARGIN = 1,
+        STATS = rowSums(weights),
+        FUN = "/"
+      )
+      pred_sample[i] <- weights %*% sample_points[-i, ]$z %>% as.numeric()
+    }
+    return(sqrt(sum((pred_sample - sample_points$z)^2) / nrow(sample_points)))
+  }
+)
+```
+
+
+```{r loo_plot}
+ggplot(
+  data = data.frame(x = 1:20, y = rmse_errors),
+  mapping = aes(x = x, y = y)
+) +
+  geom_line() +
+  labs(
+    x = "Power order",
+    y = "Leave-one-out RMSE",
+    title = "RMSE for different orders p"
+  )
+```
+
+
+The RMSE (estimated with leave-one-out) first decreases a lot and reach a plateau around 5. The actual best value is `r which.min(rmse_errors)` but from this plot one can see that choosing 5 or 20 does not make a huge difference. One reason coulb be that 5 is high enough to merely give all the weight to the closest point of the point to predict. The map obtained with $p=5$ looks a bit like a map we could have obtained with a 1-nearest-neighbour model.
+
+
+### The `idw` function
+
+The package `gstat` has an `idw()` function that does exactly what we did. It takes 5 arguments: 
+
+* `formula` a formula giving the name of the target variable. For IDW the right hand side is 1, meaning no independant variables.
+* `locations` a formula giving the names of the coordinates variables.
+* `data` the name of the dataset containing the variables defined in `formula` and `locations`.
+* `newdata` a table with the coordinates where to make predictions.
+* `idp` the power order to use.
+
+```{r idw, echo = TRUE}
+pred_gstat <- idw(
+  formula = z ~ 1,
+  locations = ~ x + y,
+  data = sample_points,
+  newdata = simulated_grid[, c("x", "y")],
+  idp = 5
+)
+```
+
+As a sanity check let's compare the map obtained from the code of the [previous section](#idw-step-by-step). 
+
+```{r idw_sanity}
+names(pred_gstat) <- c("x", "y", "z", "var")
+data.table(simulated_grid[, c("x", "y")], "idw_base" = pred[, 1], "idw_gstat" = pred_gstat$z) %>%
+  merge(
+    y = sample_points,
+    by = c("x", "y"),
+    all.x = TRUE
+  ) %>%
+  .[is.na(idw_base), idw_base := z] %>%
+  .[, z := NULL] %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+  plot_map("Prediction with IDW and gstat IDW") +
+  facet_grid(
+    cols = vars(type),
+    labeller = labeller(type = c("idw_base" = "Step by step", "idw_gstat" = "IDW function"))) +
+  theme(
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
+  )
+```
 
 
 # Help
