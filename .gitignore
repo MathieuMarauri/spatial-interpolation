@@ -5,7 +5,7 @@
 .Ruserdata
 
 # HTML files
-.html
+*.html
 
 # doc folder
 doc
