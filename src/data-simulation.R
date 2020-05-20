@@ -8,6 +8,7 @@ library("geoR") # Analysis of geostatistical data
 options(geoR.messages = FALSE)
 library("ggplot2") # Data visualisations using the Grammar of Graphics
 library("magrittr") # Pipe operators
+source("src/helpers.R") # Load custom functions
 
 # Set default ggplot theme
 theme_set(
@@ -47,29 +48,7 @@ base_map <- grf(
 base_map <- data.table(base_map$coords, "z" = base_map$data)
 
 # Visualise the generated map
-ggplot(
-  data = base_map,
-  mapping = aes(x = x, y = y, fill = z)
-) +
-  geom_tile() +
-  guides(
-    fill = guide_colorbar(title.vjust = 0.8)
-  ) +
-  scale_x_continuous(
-    expand = c(0, 0)
-  ) +
-  scale_y_continuous(
-    expand = c(0, 0)
-  ) +
-  coord_fixed() +
-  labs(
-    title = "Simulated data"
-  ) +
-  theme(
-    legend.position = 'bottom',
-    axis.line = element_blank(),
-    panel.grid = element_blank()
-  )
+plot_map(base_map, "Simulated data")
 
 # Export simulated data
 saveRDS(base_map, "data/grf_spheric_01x01.rds")
@@ -85,29 +64,7 @@ base_map <- grf(
 base_map <- data.table(base_map$coords, "z" = base_map$data)
 
 # Visualise the generated map
-ggplot(
-  data = base_map,
-  mapping = aes(x = x, y = y, fill = z)
-) +
-  geom_tile() +
-  guides(
-    fill = guide_colorbar(title.vjust = 0.8)
-  ) +
-  scale_x_continuous(
-    expand = c(0, 0)
-  ) +
-  scale_y_continuous(
-    expand = c(0, 0)
-  ) +
-  coord_fixed() +
-  labs(
-    title = "Simulated data"
-  ) +
-  theme(
-    legend.position = 'bottom',
-    axis.line = element_blank(),
-    panel.grid = element_blank()
-  )
+plot_map(base_map, "Simulated data")
 
 # Export simulated data
 saveRDS(base_map, "data/grf_gauss_100x100.rds")
