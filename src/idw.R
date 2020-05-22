@@ -5,27 +5,28 @@
 # Set-up --------------------------------------------------------------------------------------
 
 library("data.table") # Fast dataset manipulation
+import::from("fields", "rdist") # rdist function
 library("ggplot2") # Data visualisations using the Grammar of Graphics
 library("gstat") # Geostatistical modelling
-import::from("fields", "rdist") # rdist function
+library("ipdw") # Inverse path distance weighting
 library("sf") # Spatial data manipulation
 source("src/helpers.R") # Load custom functions
 
 # Set default ggplot theme
 theme_set(
   theme_light(
-  base_size = 20
+    base_size = 20
   ) +
-  theme(
-    text = element_text(family = "Gibson", colour = "gray10"),
-    panel.border = element_blank(),
-    axis.line = element_line(colour = "gray50", size = .5),
-    axis.ticks = element_blank(),
-    strip.background = element_rect(colour = "gray50", fill = "transparent", size = .7),
-    strip.text.x = element_text(colour = "gray10"),
-    strip.text.y = element_text(colour = "gray10"),
-    legend.key.size = unit(1.5, "cm")
-  )
+    theme(
+      text = element_text(family = "Gibson", colour = "gray10"),
+      panel.border = element_blank(),
+      axis.line = element_line(colour = "gray50", size = .5),
+      axis.ticks = element_blank(),
+      strip.background = element_rect(colour = "gray50", fill = "transparent", size = .7),
+      strip.text.x = element_text(colour = "gray10"),
+      strip.text.y = element_text(colour = "gray10"),
+      legend.key.size = unit(1.5, "cm")
+    )
 )
 
 # Set default scales
@@ -78,9 +79,6 @@ weights <- sweep(
 # Multiply the weights matrix with the z value of the sample points
 pred <- weights %*% sample_points$z
 
-# Add value of sample points
-pred[is.na(pred)] <- sample_points$z
-
 # Plot the result alongside the true data
 data.table(simulated_grid[, c("x", "y")], "pred" = pred[, 1], "true" = simulated_grid$z) %>%
   merge(
@@ -95,7 +93,7 @@ data.table(simulated_grid[, c("x", "y")], "pred" = pred[, 1], "true" = simulated
     variable.name = "type",
     value.name = "z"
   ) %>%
-plot_map("Prediction with IDW and real data") +
+  plot_map("Prediction with IDW and real data") +
   facet_grid(cols = vars(type)) +
   theme(
     strip.text = element_text(size = 12),
@@ -178,4 +176,109 @@ data.table(simulated_grid[, c("x", "y")], "idw_base" = pred[, 1], "idw_gstat" = 
 
 # Interpolation with spatial constraints ------------------------------------------------------
 
+# Import the points and barriers that will be used.
+barriers <- readRDS("data/barriers.rds")
+points <- readRDS("data/points.rds")
 
+# Interpolation with IDW
+pred_idw <- idw(
+  formula = z ~ 1,
+  locations = ~ x + y,
+  data = points,
+  newdata = simulated_grid[, c("x", "y")],
+  idp = 2
+)
+names(pred_idw) <- c("x", "y", "z", "var")
+
+# Visualise the results
+plot_map(pred_idw, "Interpolation with IDW") +
+  geom_sf(
+    data = barriers
+  )
+
+# First compute the distance matrix between all points of the grid and all sample points
+distance <- rdist(simulated_grid[, c("x", "y")], points[, c("x", "y")])
+
+# Define the power order
+p <- 5
+
+# Take the inverse of every element
+weights <- apply(
+  X = distance,
+  MARGIN = 1:2,
+  FUN = function(x) 1 / x^p
+)
+
+# Remove connection that are not in "line of sight". For each pair of point build a line and check
+# wether it crosses a barrier
+to_remove <- matrix(FALSE, nrow = nrow(weights), ncol = ncol(weights))
+for (i in seq_len(nrow(simulated_grid))) {
+  for (j in seq_len(nrow(points))) {
+    to_remove[i, j] <- rbind(as.numeric(points[j, c("x", "y")]), as.numeric(simulated_grid[i, c("x", "y")])) %>%
+      st_linestring() %>%
+      st_intersects(barriers) %>%
+      .[[1]] %>%
+      length() > 0
+  }
+}
+weights[to_remove] <- 0
+
+
+all_pairs <- merge.data.table(
+  x = as.data.table(points[, c("x", "y")])[, id := 1],
+  y = as.data.table(simulated_grid[, c("x", "y")])[, id := 1],
+  by = c("id"),
+  suffixes = c("_point", "_grid"),
+  allow.cartesian = TRUE
+)
+
+lines <- lapply(
+  X = 1:nrow(all_pairs),
+  FUN = function(i) {
+    st_linestring(rbind(
+      as.numeric(all_pairs[i, .(x_point, y_point)]),
+      as.numeric(all_pairs[i, .(x_grid, y_grid)])
+    ))
+  }
+)
+
+a <- st_sfc(lines)
+b <- st_intersects(a, barriers)
+c <- lengths(b)
+
+
+
+
+# Divide (FUN = "/") the weights by the row sum (STATS = rowSums(weights)) to every element of the
+# weights matrix (x = weights) row wise (MARGIN = 1)
+weights <- sweep(
+  x = weights,
+  MARGIN = 1,
+  STATS = rowSums(weights),
+  FUN = "/"
+)
+
+# Multiply the weights matrix with the z value of the sample points
+pred <- weights %*% points$z
+
+# Plot the result alongside the IDW prediction
+data.table(simulated_grid[, c("x", "y")], "pred" = pred[, 1], "idw" = pred_idw$z) %>%
+  merge(
+    y = points,
+    by = c("x", "y"),
+    all.x = TRUE
+  ) %>%
+  .[is.na(pred), pred := z] %>%
+  .[, z := NULL] %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+  plot_map("Prediction with IDW and constrained IDW") +
+  geom_sf(data = barriers) +
+  facet_grid(cols = vars(type)) +
+  theme(
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
+  )
