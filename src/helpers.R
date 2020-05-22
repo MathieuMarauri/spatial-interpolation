@@ -3,11 +3,11 @@
 #' This function plots a tile map
 #'
 plot_map <- function(map, title = NULL) {
-  ggplot(
-    data = map,
-    mapping = aes(x = x, y = y, fill = z)
-  ) +
-    geom_tile() +
+  ggplot() +
+    geom_tile(
+      data = map,
+      mapping = aes(x = x, y = y, fill = z)
+    ) +
     guides(
       fill = guide_colorbar(title.vjust = 0.8)
     ) +
