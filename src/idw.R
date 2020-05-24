@@ -186,7 +186,7 @@ pred_idw <- idw(
   locations = ~ x + y,
   data = points,
   newdata = simulated_grid[, c("x", "y")],
-  idp = 2
+  idp = 2,
 )
 names(pred_idw) <- c("x", "y", "z", "var")
 
@@ -217,37 +217,32 @@ for (i in seq_len(nrow(simulated_grid))) {
     to_remove[i, j] <- rbind(as.numeric(points[j, c("x", "y")]), as.numeric(simulated_grid[i, c("x", "y")])) %>%
       st_linestring() %>%
       st_intersects(barriers) %>%
-      .[[1]] %>%
-      length() > 0
+      lengths() > 0
   }
 }
 weights[to_remove] <- 0
 
-
-all_pairs <- merge.data.table(
-  x = as.data.table(points[, c("x", "y")])[, id := 1],
-  y = as.data.table(simulated_grid[, c("x", "y")])[, id := 1],
-  by = c("id"),
-  suffixes = c("_point", "_grid"),
-  allow.cartesian = TRUE
-)
-
-lines <- lapply(
-  X = 1:nrow(all_pairs),
-  FUN = function(i) {
-    st_linestring(rbind(
-      as.numeric(all_pairs[i, .(x_point, y_point)]),
-      as.numeric(all_pairs[i, .(x_grid, y_grid)])
-    ))
-  }
-)
-
-a <- st_sfc(lines)
-b <- st_intersects(a, barriers)
-c <- lengths(b)
-
-
-
+# all_pairs <- merge.data.table(
+#   x = as.data.table(points[, c("x", "y")])[, id := 1],
+#   y = as.data.table(simulated_grid[, c("x", "y")])[, id := 1],
+#   by = c("id"),
+#   suffixes = c("_point", "_grid"),
+#   allow.cartesian = TRUE
+# )
+# lines_that_crosses <- lapply(
+#   X = 1:nrow(all_pairs),
+#   FUN = function(i) {
+#     st_linestring(rbind(
+#       as.numeric(all_pairs[i, .(x_point, y_point)]),
+#       as.numeric(all_pairs[i, .(x_grid, y_grid)])
+#     ))
+#   }
+# ) %>%
+#   st_sfc() %>%
+#   st_intersects(barriers) %>%
+#   lengths() > 0 %>%
+#   matrix(byrow = FALSE, ncol = nrow(points))
+# weights[lines_that_crosses] <- 0
 
 # Divide (FUN = "/") the weights by the row sum (STATS = rowSums(weights)) to every element of the
 # weights matrix (x = weights) row wise (MARGIN = 1)
@@ -260,6 +255,9 @@ weights <- sweep(
 
 # Multiply the weights matrix with the z value of the sample points
 pred <- weights %*% points$z
+
+# Export the results
+saveRDS(pred, "output/pred_idw_barriers.rds")
 
 # Plot the result alongside the IDW prediction
 data.table(simulated_grid[, c("x", "y")], "pred" = pred[, 1], "idw" = pred_idw$z) %>%
