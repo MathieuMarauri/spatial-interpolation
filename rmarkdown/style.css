@@ -4,6 +4,11 @@ p > code, em > code, li > code {
     background-color: rgb(248, 248, 248) !important;
 }
 
+body {
+  font-size: 16px;
+  font-family: "Gibson",Helvetica,Arial,sans-serif;
+}
+
 /*
 .sourceCode code {
     font-weight: normal;
