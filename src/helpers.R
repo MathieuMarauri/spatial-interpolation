@@ -27,3 +27,47 @@ plot_map <- function(map, title = NULL) {
       panel.grid = element_blank()
     )
 }
+
+#'
+#' This function plots the empirical variaogram.
+#'
+plot_variogram <- function(empirical_variogram, var = "group1") {
+  ggplot() +
+    geom_point(
+      data = empirical_variogram,
+      mapping = aes_string(x = var, y = "vario_mean")
+    ) +
+    labs(
+      x = "Distance",
+      y = latex2exp::TeX("$\\sum_{i = 1}^{N_h}\\frac{(Z(s_{i+h}) - Z(s_i))^2}{2N_h}$"),
+      title = "Empirical variogram"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+
+#'
+#' This function plots the distribution of the semi-variance as boxplot for the different groups of
+#' distances.
+#'
+plot_variogram_box <- function(point_variogram, empirical_variogram, var = "group1") {
+  ggplot() +
+    geom_boxplot(
+      data = point_variogram,
+      mapping = aes_string(x = var, y = "semi_variance"),
+      varwidth = TRUE
+    ) +
+    geom_label(
+      data = empirical_variogram,
+      mapping = aes_string(x = var, y = -.8, label = "count")
+    ) +
+    labs(
+      x = "Distance",
+      y = latex2exp::TeX("$\\frac{(Z(s_i) - Z(s_j))^2}{2}$"),
+      title = "Distribution of the semi-variance"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
