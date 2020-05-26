@@ -360,9 +360,21 @@ grid_pred <- sapply(
   }
 )
 
-# Visualise the result
-plot_map(cbind(simulated_grid[, c("x", "y")], "z" = grid_pred), "")
-
-
+# Plot the result alongside the true data
+data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "true" = simulated_grid$z) %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+  plot_map("Prediction with Kriging and real data") +
+  facet_grid(
+    cols = vars(type),
+    labeller = labeller(type = c("pred" = "Kriging", "true" = "Real data"))
+  ) +
+  theme(
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
+  )
 
 
