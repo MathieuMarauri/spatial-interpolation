@@ -31,11 +31,11 @@ plot_map <- function(map, title = NULL) {
 #'
 #' This function plots the empirical variaogram.
 #'
-plot_variogram <- function(empirical_variogram, var = "group1") {
+plot_variogram <- function(empirical_variogram) {
   ggplot() +
     geom_point(
       data = empirical_variogram,
-      mapping = aes_string(x = var, y = "vario_mean")
+      mapping = aes(x = x, y = vario_mean)
     ) +
     labs(
       x = "Distance",
@@ -51,16 +51,16 @@ plot_variogram <- function(empirical_variogram, var = "group1") {
 #' This function plots the distribution of the semi-variance as boxplot for the different groups of
 #' distances.
 #'
-plot_variogram_box <- function(point_variogram, empirical_variogram, var = "group1") {
+plot_variogram_box <- function(point_variogram, empirical_variogram) {
   ggplot() +
     geom_boxplot(
       data = point_variogram,
-      mapping = aes_string(x = var, y = "semi_variance"),
+      mapping = aes(x = as.character(x), y = semi_variance),
       varwidth = TRUE
     ) +
     geom_label(
       data = empirical_variogram,
-      mapping = aes_string(x = var, y = -.8, label = "count")
+      mapping = aes(x = as.character(x), y = -.8, label = count)
     ) +
     labs(
       x = "Distance",
@@ -69,5 +69,19 @@ plot_variogram_box <- function(point_variogram, empirical_variogram, var = "grou
     ) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+
+
+#'
+#' This function extracts the center of class obtained from cut function.
+#'
+define_center <- function(x) {
+  x %>%
+    as.character() %>%
+    stri_replace_all_regex("(\\(|\\[|\\])", "") %>%
+    stri_split_fixed(",") %>%
+    sapply(
+      FUN = function(x) sum(as.numeric(x)) / 2
     )
 }

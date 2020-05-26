@@ -10,6 +10,7 @@ library("ggplot2") # Data visualisations using the Grammar of Graphics
 library("gstat") # Geostatistical modelling
 library("ipdw") # Inverse path distance weighting
 library("sf") # Spatial data manipulation
+library("stringi") # String manipulation
 source("src/helpers.R") # Load custom functions
 
 # Set default ggplot theme
@@ -126,56 +127,113 @@ ggplot(
 
 # Create classes of distance on which average semi variance will be computed
 point_variogram[, group1 := cut(distance, 15)]
+point_variogram[, x := define_center(group1)]
 
 # Compute the avegare semi-variance by distance group
-empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = group1]
+empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
-plot_variogram(empirical_variogram, "group1")
+plot_variogram(empirical_variogram)
 
 # Visualisation of the distribution of the semi-variogram by group of distances
-plot_variogram_box(point_variogram, empirical_variogram, "group1")
+plot_variogram_box(point_variogram, empirical_variogram)
 
 # Adjust the empirical variogram by defining better classes and specifying a max.dist
 # Create evenly populated classes of distance on which average semi variance will be computed
 point_variogram[, group2 := cut_number(distance, 15)]
+point_variogram[, x := define_center(group2)]
 
 # Compute the avegare semi-variance by distance group
-empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = group2]
+empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
-plot_variogram(empirical_variogram, "group2")
+plot_variogram(empirical_variogram)
 
 # Visualisation of the distribution of the semi-variogram by group of distances
-plot_variogram_box(point_variogram, empirical_variogram, "group2")
+plot_variogram_box(point_variogram, empirical_variogram)
 
 # Create evenly populated classes of distance on which average semi variance will be computed
 point_variogram[distance < .8, group3 := cut_number(distance, 10)]
+point_variogram[, x := define_center(group3)]
 
 # Compute the avegare semi-variance by distance group
-empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = group3]
+empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
-plot_variogram(empirical_variogram[!is.na(group3)], "group3")
+plot_variogram(empirical_variogram[!is.na(x)])
 
 # Visualisation of the distribution of the semi-variogram by group of distances
-plot_variogram_box(point_variogram[!is.na(group3)], empirical_variogram[!is.na(group3)], "group3")
+plot_variogram_box(point_variogram[!is.na(x)], empirical_variogram[!is.na(x)])
 
 # Smaller groups at the beginning
 point_variogram[distance < .8, group4 := cut(distance, breaks = quantile(distance, c(seq(0, .15, by = .05), seq(.2, 1, length.out = 9))))]
+point_variogram[, x := define_center(group4)]
 
 # Compute the avegare semi-variance by distance group
-empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = group4]
+empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
-plot_variogram(empirical_variogram[!is.na(group4)], "group4")
+plot_variogram(empirical_variogram[!is.na(x)])
 
 # Visualisation of the distribution of the semi-variogram by group of distances
-plot_variogram_box(point_variogram[!is.na(group4)], empirical_variogram[!is.na(group4)], "group4")
+plot_variogram_box(point_variogram[!is.na(x)], empirical_variogram[!is.na(x)])
+
+setorderv(empirical_variogram, "x")
 
 ### Parametric variogram
 
-#
+# Define the function to optimise
+loss_function <- function(params, x, vario_emp, cov_model) {
+  sigma <- params[1]
+  phi <- params[2]
+  nugget <- params[3]
+  if (cov_model == "spherical") {
+    vario_mod <- ifelse(
+      test = x == 0,
+      yes = 0,
+      no = ifelse(
+        test = x <= phi,
+        yes = nugget + sigma,
+        no = nugget + sigma * (3 / 2 * (x / phi) - 1 / 2 * (x / phi)^3)
+      )
+    )
+  } else if (cov_model == "gaussian") {
+    vario_mod <- ifelse(
+      test = x == 0,
+      yes = 0,
+      no = nugget + sigma * (1 - exp(-x^2 / phi^2))
+    )
+  } else if (cov_model == "exponential") {
+    vario_mod <- ifelse(
+      test = x == 0,
+      yes = 0,
+      no = nugget + sigma * (1 - exp(-x / phi))
+    )
+  }
+  loss <- sum((vario_emp - vario_mod)^2)
+  return(loss)
+}
+
+# Numeric optimisation to find the best parameters
+optim_result <- optim(
+  par = c(2.2, .4, 0),
+  fn = loss_function,
+  x = x[!is.na(x)],
+  vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)],
+  cov_model = "gaussian"
+)
+
+# Visualise the parametric variogram and the empirical one
+vario_fit_data <- data.frame(
+  x = seq(0, .8, length.out = 1000),
+  y = optim_result$par[3] + optim_result$par[1] * (1 - exp(-seq(0, .8, length.out = 1000)^2 / optim_result$par[2]^2))
+)
+plot_variogram(empirical_variogram[!is.na(x)]) +
+  geom_line(
+    data = vario_fit_data,
+    mapping = aes(x = x, y = y)
+  )
+
 
 # Kriging step by step ------------------------------------------------------------------------
 
