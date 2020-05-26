@@ -2,11 +2,11 @@
 #'
 #' This function plots a tile map
 #'
-plot_map <- function(map, title = NULL) {
+plot_map <- function(map, title = NULL, var = "z") {
   ggplot() +
     geom_tile(
       data = map,
-      mapping = aes(x = x, y = y, fill = z)
+      mapping = aes_string(x = "x", y = "y", fill = var)
     ) +
     guides(
       fill = guide_colorbar(title.vjust = 0.8)
@@ -41,9 +41,6 @@ plot_variogram <- function(empirical_variogram) {
       x = "Distance",
       y = latex2exp::TeX("$\\sum_{i = 1}^{N_h}\\frac{(Z(s_{i+h}) - Z(s_i))^2}{2N_h}$"),
       title = "Empirical variogram"
-    ) +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1)
     )
 }
 
@@ -66,9 +63,6 @@ plot_variogram_box <- function(point_variogram, empirical_variogram) {
       x = "Distance",
       y = latex2exp::TeX("$\\frac{(Z(s_i) - Z(s_j))^2}{2}$"),
       title = "Distribution of the semi-variance"
-    ) +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1)
     )
 }
 

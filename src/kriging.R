@@ -26,7 +26,7 @@ theme_set(
       strip.background = element_rect(colour = "gray50", fill = "transparent", size = .7),
       strip.text.x = element_text(colour = "gray10"),
       strip.text.y = element_text(colour = "gray10"),
-      legend.key.size = unit(1.5, "cm")
+      legend.key.size = unit(1, "cm")
     )
 )
 
@@ -189,13 +189,9 @@ loss_function <- function(params, x, vario_emp, cov_model) {
   nugget <- params[3]
   if (cov_model == "spherical") {
     vario_mod <- ifelse(
-      test = x == 0,
-      yes = 0,
-      no = ifelse(
-        test = x <= phi,
-        yes = nugget + sigma,
-        no = nugget + sigma * (3 / 2 * (x / phi) - 1 / 2 * (x / phi)^3)
-      )
+      test = x > phi,
+      yes = nugget + sigma,
+      no = nugget + sigma * (3 / 2 * (x / phi) - 1 / 2 * (x / phi)^3)
     )
   } else if (cov_model == "gaussian") {
     vario_mod <- ifelse(
@@ -215,28 +211,64 @@ loss_function <- function(params, x, vario_emp, cov_model) {
 }
 
 # Numeric optimisation to find the best parameters
-optim_result <- optim(
+gausian_param <- optim(
   par = c(2.2, .4, 0),
   fn = loss_function,
-  x = x[!is.na(x)],
+  x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
   vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)],
   cov_model = "gaussian"
+)
+spherical_param <- optim(
+  par = c(2.2, .4, 0),
+  fn = loss_function,
+  x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
+  vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)],
+  cov_model = "spherical"
+)
+exponential_param <- optim(
+  par = c(2.2, .4, 0),
+  fn = loss_function,
+  x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
+  vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)],
+  cov_model = "exponential"
 )
 
 # Visualise the parametric variogram and the empirical one
 vario_fit_data <- data.frame(
-  x = seq(0, .8, length.out = 1000),
-  y = optim_result$par[3] + optim_result$par[1] * (1 - exp(-seq(0, .8, length.out = 1000)^2 / optim_result$par[2]^2))
+  x = rep(seq(0, .8, length.out = 1000), 3),
+  type = rep(c("Exponential", "Gaussian", "Spherical"), each = 1000),
+  y = c(
+    exponential_param$par[3] + exponential_param$par[1] * (1 - exp(-seq(0, .8, length.out = 1000) / exponential_param$par[2])),
+    gausian_param$par[3] + gausian_param$par[1] * (1 - exp(-seq(0, .8, length.out = 1000)^2 / gausian_param$par[2]^2)),
+    ifelse(
+      test = seq(0, .8, length.out = 1000) > spherical_param$par[2],
+      yes = spherical_param$par[3] + spherical_param$par[1],
+      no = spherical_param$par[3] + spherical_param$par[1] * (3 / 2 * (seq(0, .8, length.out = 1000) / spherical_param$par[2]) - 1 / 2 * (seq(0, .8, length.out = 1000) / spherical_param$par[2])^3)
+    )
+  )
 )
 plot_variogram(empirical_variogram[!is.na(x)]) +
   geom_line(
     data = vario_fit_data,
-    mapping = aes(x = x, y = y)
+    mapping = aes(x = x, y = y, color = type)
+  ) +
+  guides(
+    colour = guide_legend(override.aes = list(size = 2))
+  ) +
+  labs(
+    y = "Semi-variogram",
+    color = "Parametric model"
+  ) +
+  theme(
+    legend.position = c(.8, .2)
   )
 
 
 # Kriging step by step ------------------------------------------------------------------------
 
+# Pediction is made step by step for a single point first, then for the grid.
+
+### For one point
 
 # Coordinates of point to predict
 point_pred <- c(.5, .5)
@@ -245,26 +277,30 @@ point_pred <- c(.5, .5)
 rownames(sample_points) <- paste0("s", 1:nrow(sample_points))
 
 # Distance matrix of the points in the sample and the point to predict
-matrix_dist <- as.matrix(sample_points[, 1:2]) %>% # transform the coordinates into a matrix
+matrix_dist <- as.matrix(sample_points[, c("x", "y")]) %>% # transform the coordinates into a matrix
   rbind("s_pred" = point_pred) %>% # Add the point to predict
   wordspace::dist.matrix(method = "euclidean") # compute the distance between all points
 
-# Extract the distance between point to predict and sample point
+# Extract the distance between point to predict and sample points
 predict_dist <- matrix_dist[1:100, 101]
 
 # Remove distance with point to predict from matrix_dist
-echantillon_dist <- matrix_dist[1:100, 1:100]
+sample_dist <- matrix_dist[1:100, 1:100]
 
 # Function to compute the variogram
-vario_func <- function(h, vario_fit) {
-  return(vario_fit$nugget + vario_fit$cov.pars[1] * (1 - exp(-h / vario_fit$cov.pars[2])))
+vario_func <- function(x) {
+  return(ifelse(
+    test = x > spherical_param$par[2],
+    yes = spherical_param$par[3] + spherical_param$par[1],
+    no = spherical_param$par[3] + spherical_param$par[1] * (3 / 2 * (x / spherical_param$par[2]) - 1 / 2 * (x / spherical_param$par[2])^3)
+  ))
 }
 
 # Variogram matrix
 variogram_matrix <- apply(
-  X = echantillon_dist,
+  X = sample_dist,
   MARGIN = c(1, 2),
-  FUN = function(x) vario_func(x, vario_fit_exp)
+  FUN = function(x) vario_func(x)
 )
 
 # Add the extra row and column of 1 (0 on diag)
@@ -276,7 +312,7 @@ variogram_matrix[nrow(variogram_matrix), ncol(variogram_matrix)] <- 0
 variogram_matrix_inv <- solve(variogram_matrix)
 
 # Variogram vector
-variogram_vec <- vario_func(predict_dist, vario_fit_exp)
+variogram_vec <- vario_func(predict_dist)
 
 # Add extra 1
 variogram_vec <- c(variogram_vec, 1)
@@ -286,9 +322,47 @@ weights <- variogram_matrix_inv %*% variogram_vec
 
 # Compute the value at the point pred and compare with the one obtained with the Kriginig model
 sum(weights[1:100] * sample_points$z)
-krige$predict[point_pred[1] + 1 + point_pred[2] * 101]
 
-# Compute the variance
-weights[101] + sum(weights[1:100] * variogram_vec[1:100])
-krige$krige.var[point_pred[1] + 1 + point_pred[2] * 101]
+### For the entire grid
+
+# Make the prediction
+pb <- progress_bar$new(total = nrow(simulated_grid), format = "[:bar] :current/:total (:percent) :elapsedfull")
+grid_pred <- sapply(
+  X = seq_len(nrow(simulated_grid)),
+  FUN = function(i) {
+    point_pred <- as.numeric(simulated_grid[i, c("x", "y")])
+    matrix_dist <- as.matrix(sample_points[, c("x", "y")]) %>% # transform the coordinates into a matrix
+      rbind("s_pred" = point_pred) %>% # Add the point to predict
+      wordspace::dist.matrix(method = "euclidean") # compute the distance between all points
+    predict_dist <- matrix_dist[1:100, 101]
+    sample_dist <- matrix_dist[1:100, 1:100]
+    vario_func <- function(x) {
+      return(ifelse(
+        test = x > spherical_param$par[2],
+        yes = spherical_param$par[3] + spherical_param$par[1],
+        no = spherical_param$par[3] + spherical_param$par[1] * (3 / 2 * (x / spherical_param$par[2]) - 1 / 2 * (x / spherical_param$par[2])^3)
+      ))
+    }
+    variogram_matrix <- apply(
+      X = sample_dist,
+      MARGIN = c(1, 2),
+      FUN = function(x) vario_func(x)
+    )
+    variogram_matrix <- rbind(variogram_matrix, 1)
+    variogram_matrix <- cbind(variogram_matrix, 1)
+    variogram_matrix[nrow(variogram_matrix), ncol(variogram_matrix)] <- 0
+    variogram_matrix_inv <- solve(variogram_matrix)
+    variogram_vec <- vario_func(predict_dist)
+    variogram_vec <- c(variogram_vec, 1)
+    weights <- variogram_matrix_inv %*% variogram_vec
+    pb$tick()
+    return(sum(weights[1:100] * sample_points$z))
+  }
+)
+
+# Visualise the result
+plot_map(cbind(simulated_grid[, c("x", "y")], "z" = grid_pred), "")
+
+
+
 
