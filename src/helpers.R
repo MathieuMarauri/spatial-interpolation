@@ -39,7 +39,7 @@ plot_variogram <- function(empirical_variogram) {
     ) +
     labs(
       x = "Distance",
-      y = latex2exp::TeX("$\\sum_{i = 1}^{N_h}\\frac{(Z(s_{i+h}) - Z(s_i))^2}{2N_h}$"),
+      y = latex2exp::TeX("$\\frac{1}{2N_h}\\sum_{i = 1}^{N_h}(Z(s_{i+h}) - Z(s_i))^2$"),
       title = "Empirical variogram"
     )
 }
@@ -54,6 +54,9 @@ plot_variogram_box <- function(point_variogram, empirical_variogram) {
       data = point_variogram,
       mapping = aes(x = as.character(x), y = semi_variance),
       varwidth = TRUE
+    ) +
+    geom_jitter(
+      width = 0.2
     ) +
     geom_label(
       data = empirical_variogram,
