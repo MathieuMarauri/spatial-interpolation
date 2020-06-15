@@ -7,7 +7,7 @@
 library("data.table") # Fast dataset manipulation
 import::from("fields", "rdist") # rdist function
 library("ggplot2") # Data visualisations using the Grammar of Graphics
-library("gstat") # Geostatistical modelling
+library("gstat") # Geo-statistical modelling
 library("ipdw") # Inverse path distance weighting
 library("sf") # Spatial data manipulation
 library("stringi") # String manipulation
@@ -59,7 +59,7 @@ plot_map(simulated_grid, "The 100 sample points on the true map") +
 # Variogram step by step ----------------------------------------------------------------------
 
 # Build the variogram. First define the empirical variogram by varying the distances classes then
-# adjust a paremeter variogram.
+# adjust a parameter variogram.
 
 ### Distance matrix
 
@@ -129,7 +129,7 @@ ggplot(
 point_variogram[, group1 := cut(distance, 15)]
 point_variogram[, x := define_center(group1)]
 
-# Compute the avegare semi-variance by distance group
+# Compute the average semi-variance by distance group
 empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
@@ -138,12 +138,11 @@ plot_variogram(empirical_variogram)
 # Visualisation of the distribution of the semi-variogram by group of distances
 plot_variogram_box(point_variogram, empirical_variogram)
 
-# Adjust the empirical variogram by defining better classes and specifying a max.dist
 # Create evenly populated classes of distance on which average semi variance will be computed
 point_variogram[, group2 := cut_number(distance, 15)]
 point_variogram[, x := define_center(group2)]
 
-# Compute the avegare semi-variance by distance group
+# Compute the average semi-variance by distance group
 empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
@@ -156,7 +155,7 @@ plot_variogram_box(point_variogram, empirical_variogram)
 point_variogram[distance < .8, group3 := cut_number(distance, 10)]
 point_variogram[, x := define_center(group3)]
 
-# Compute the avegare semi-variance by distance group
+# Compute the average semi-variance by distance group
 empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
@@ -169,7 +168,7 @@ plot_variogram_box(point_variogram[!is.na(x)], empirical_variogram[!is.na(x)])
 point_variogram[distance < .8, group4 := cut(distance, breaks = quantile(distance, c(seq(0, .15, by = .05), seq(.2, 1, length.out = 9))))]
 point_variogram[, x := define_center(group4)]
 
-# Compute the avegare semi-variance by distance group
+# Compute the average semi-variance by distance group
 empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
 
 # Visualisation of the empirical variogram
@@ -320,7 +319,7 @@ variogram_vec <- c(variogram_vec, 1)
 # Compute the vector of weights
 weights <- variogram_matrix_inv %*% variogram_vec
 
-# Compute the value at the point pred and compare with the one obtained with the Kriginig model
+# Compute the value at the point pred and compare with the one obtained with the Kriging model
 sum(weights[1:100] * sample_points$z)
 
 ### For the entire grid
