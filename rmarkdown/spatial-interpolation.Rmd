@@ -35,9 +35,10 @@ library("cowplot") # Export plots
 library("data.table") # Fast dataset manipulation
 import::from("fields", "rdist") # rdist function
 library("ggplot2") # Data visualisations using the Grammar of Graphics
-library("ggrepel") # Text lables
-library("gstat") # Geostatistical modelling
+library("ggrepel") # Text labels
+library("gstat") # Geo-statistical modelling
 library("magrittr") # Pipe operators
+library("stringi") # String manipulation
 source("../src/helpers.R") # Load custom functions
 
 # Set default ggplot theme
@@ -66,9 +67,9 @@ scale_fill_discrete <- function(...) ggplot2::scale_fill_viridis_d(..., option =
 
 # Introduction
 
-Spatial interpolation is the process of using points with known values to estimate values at other points ([QGIS definition](https://docs.qgis.org/3.10/en/docs/gentle_gis_introduction/spatial_analysis_interpolation.html)). When asked a question like _What is the air polluants concentration over the entire city?_ and you only have access to measures at some observation stations, the answer is *spatial interpolation*. 
+Spatial interpolation is the process of using points with known values to estimate values at other points ([QGIS definition](https://docs.qgis.org/3.10/en/docs/gentle_gis_introduction/spatial_analysis_interpolation.html)). When asked a question like _What is the air pollutants concentration over the entire city?_ and you only have access to measures at some observation stations, the answer is *spatial interpolation*. 
 
-There are many use cases, depth maps, concentration of mineral ressources in the soil of a region, air pollution, elevation map, ...The common point is that the information of interest (altitude, concentration, ...) is known at sample points and one wants to know it at every point of a specific region. 
+There are many use cases, depth maps, concentration of mineral resources in the soil of a region, air pollution, elevation map, ...The common point is that the information of interest (altitude, concentration, ...) is known at sample points and one wants to know it at every point of a specific region. 
 
 There exists different solutions to this spatial interpolation problem. They often consist on taking a weighted average of the sample points. In this document 3 methods are presented:
 
@@ -96,11 +97,11 @@ $$
 \widehat{z_0} = \sum_{i = 1}^{n}\lambda_i z_i
 $$
 
-The predictions are weigthed average of the values observed at sample points $s_1, \dots , s_n$. The way the weights $\lambda_1, \dots , \lambda_n$ are defined is what make each method different from the others. However weights are defined, every method follows the [Tobler's first law of geography](https://en.wikipedia.org/wiki/Tobler%27s_first_law_of_geography) that states that _"everything is related to everything else, but near things are more related than distant things"_.
+The predictions are weighted average of the values observed at sample points $s_1, \dots , s_n$. The way the weights $\lambda_1, \dots , \lambda_n$ are defined is what make each method different from the others. However weights are defined, every method follows the [Tobler's first law of geography](https://en.wikipedia.org/wiki/Tobler%27s_first_law_of_geography) that states that _"everything is related to everything else, but near things are more related than distant things"_.
 
 #### The application
 
-The methods will be explained theoritically and code will be provided to apply them on toy data. Although the aim of this document is not to compare each method, as choosing the best one depends on the data, the same example data will be used throughout the document. It consists of a gaussian random field simulated on a $[0, 100] \times [0, 100]$ grid with the `geoR::grf()` function. A random sample of 100 points are selected and will be used as the basis for the spatial interpolation. 
+The methods will be explained theoretically and code will be provided to apply them on toy data. Although the aim of this document is not to compare each method, as choosing the best one depends on the data, the same example data will be used throughout the document. It consists of a gaussian random field simulated on a $[0, 100] \times [0, 100]$ grid with the `geoR::grf()` function. A random sample of 100 points are selected and will be used as the basis for the spatial interpolation. 
 
 <a id="grf"></a>
 ```{r grid, out.width="100%"}
@@ -132,7 +133,7 @@ $$
 \lambda_i = \frac{\left(dist(s_0, s_i)^p\right)^{-1}}{\left(\sum_{j=1}^{n}dist(s_0, s_j)^p\right)^{-1}}
 $$
 
-The weights are normalized by the sum of all weights so they sum to 1. This also removes the dependance from the unit (metres or km). The parameter $p$ defines the rate at which the influence of a point to another decreases. The higher $p$ is the fastest the decrease of influence is.
+The weights are normalized by the sum of all weights so they sum to 1. This also removes the dependence from the unit (metres or km). The parameter $p$ defines the rate at which the influence of a point to another decreases. The higher $p$ is the fastest the decrease of influence is.
 
 ```{r power}
 x_seq <- seq(0, 10, length.out = 11)
@@ -235,7 +236,7 @@ plot_map("Prediction with IDW and real data") +
   )
 ```
 
-The map is globally the same (if you're not too exigent) but much smoother than the real one. It displays some "bubbles" around the sample points which is of course coherent with the fact that each point has a strong influence only on its immediate neighborhood (recall $p$ was set to 5).
+The map is globally the same (if you're not too exigent) but much smoother than the real one. It displays some "bubbles" around the sample points which is of course coherent with the fact that each point has a strong influence only on its immediate neighbourhood (recall $p$ was set to 5).
 
 ### How to chose $p$? {#p-choice}
 
@@ -304,7 +305,7 @@ The RMSE (estimated with leave-one-out) first decreases a lot and reach a platea
 
 The package `gstat` has an `idw()` function that does exactly what we did. It takes 5 arguments: 
 
-* `formula` a formula giving the name of the target variable. For IDW the right hand side is 1, meaning no independant variables.
+* `formula` a formula giving the name of the target variable. For IDW the right hand side is 1, meaning no independent variables.
 * `locations` a formula giving the names of the coordinates variables.
 * `data` the name of the dataset containing the variables defined in `formula` and `locations`.
 * `newdata` a table with the coordinates where to make predictions.
@@ -520,30 +521,66 @@ We clearly see that the barriers prevent the high values located in the north-we
 
 Kriging is another method used to perform spatial interpolation. As IDW it uses the  [second formula](#the-equation) $\widehat{z_0} = \sum_{i = 1}^{n}\lambda_i z_i$ to make predictions. The way the weights are defined is what makes this methods specific. 
 
-Before explaining the method we need to define some concepts: random field and stationarity. A random field is simply a set of random variable. We consider each value $z_1, \dots, z_n$ to be observations of the random variables $Z_1, \dots, Z_n$. $Z(s)$ is a random function, or random field. $s$ represents a position in space. 
+Before explaining the method we need to define some concepts: what a random field is, how stationarity is defined and what a variogram is. 
 
-There are 3 king of stationarity: the strict stationarity, the second-order stationarity and the intrinsic stationarity.
+#### Random field
 
-#### The strict stationarity
+A random field, or random function, is simply a set of random variables. We consider each value $z_1, \dots, z_n$ to be observations of the random variables $Z_1, \dots, Z_n$. $Z(s) = (Z_1(s), \dots, Z_n(s))$ is a random function, or random field. $s$ represents a position in space. 
 
-It states that the joint distribution of $Z(s_i)$ is the same as the one of $Z(s_i + h)$ where $h$ indicates a translation. 
+#### Stationarity
 
-#### The second-order stationarity
+There are 3 kinds of stationarity: the strict stationarity, the second-order stationarity and the intrinsic stationarity. Refer to [@stationarity] for more information. [This document](https://informatique-mia.inra.fr/sites/informatique-mia.inra.fr.biosp-d7/files/oldfiles/geostat_janv12.pdf) (in French) also provides a nice definition of the concepts that are used in Kriging.
 
-It is weaker than the first one as it only requires the mean and variance to be invariant by translation. That is $\forall s,  \mathbb{E}[Z(s)] = \mathbb{E}[Z(s+h)] = m$ and $V(Z(s+h)) = V(Z(s)) = \sigma^2$. The covariance function only depends on $h$ and therefore the function $C$ can be defined as $Cov(Z(s+h), Z(h)) = C(h)$.
+##### The strict stationarity
 
-#### The intrinsic stationarity
+It states that the joint distribution of $Z(s_i)$ is the same as the one of $Z(s_i + h)$ where $h$ indicates a translation. It does not require the first moment nor the second one to exist.
 
-The condition is no longer on the random field itself but on the increments $Z(s+h) - Z(h)$. The expectation should be 0, $\mathbb{E}[Z(s+h) - Z(h)] = 0$ and the variance only depends on $h$. As previously we can define a function $\gamma$, called the semi-variogram, as $V(Z(s+h), Z(s)) = \mathbb{E}[(Z(s+h) - Z(h))^2] = 2\gamma(h)$.
+##### The second-order stationarity
 
-http://www.u.arizona.edu/~donaldm/homepage/my_papers/Mathematical%20Geology%2021%201989%20347-363.pdf
-https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/
+It is weaker than the first one. $Z(s)$ is said to be second-order stationary if the first 2 moments exists and are invariant by translation.
 
-Now that some basic concepts of stationarity have been defined, let's dive into the kriging method. We will be defining ordinary Kriging.
+Therefore for all $s$, $s'$ and $h$ we have:
+
+$$
+\begin{gathered}
+Cov(Z(s), Z(s')) = Cov(Z(s+h), Z(s'+h)) \\
+\mathbb{E}[Z(s)] = \mathbb{E}[Z(s+h)]
+\end{gathered}
+$$
+
+In other words weak stationarity is defined by:
+
+$$
+\begin{gathered}
+Cov(Z(s), Z(s+h)) = C(h) \\
+\mathbb{E}[Z(s)] = m
+\end{gathered}
+$$
+Strict stationarity does not imply second-order stationarity as the first 2 moments may not be defined. And of course weak stationary does not imply strict stationarity. $C(h)$ is called the auto-correlation function. It is different from the covariance function. 
+
+##### The intrinsic stationarity
+
+A random function is said to have intrinsic stationarity if the following two conditions are met:
+
+$$
+\mathbb{E}[Z(s+h) - Z(h)] = 0 \\
+V(Z(s+h), Z(s)) = 2\gamma(h)
+$$
+The condition is no longer on the random function $Z(s)$ itself but rather on the increments $Z(s+h) - Z(h)$. The function $\gamma(h)$ is the semi-variogram function. 
+
+The second-order stationarity implies the intrinsic one. The reverse is not true. 
+
+#### Variogram
+
+In the definition of intrinsic stationarity, the function $\gamma(h)$ was introduced. It is the semi-variogram. Out of the covariance function, the auto-correlation function and the variogram, the latter is the most often used as it relies on the least restrictive hypotheses of stationarity. 
+
+It is a function that only depends on $h$, the distance between 2 points, and that describes the spatial dependence of a random field. It measures how much 2 locations separated by $h$ will vary in their $z$ value. 
+
+Now that some basic concepts have been defined, let's dive into the kriging method. We will be defining ordinary Kriging.
 
 ## How it works
 
-We want to find the weights $\lambda_i$ required to predict the value $z_0$. We want our estimate to be unbiased, on average we want our predictions to be exact. In other words we want 
+Recall that our goal is to find the weights of this equation $\widehat{z_0} = \sum_{i = 1}^{n}\lambda_i z_i$. We want to find the weights $\lambda_i$ required to predict the value $z_0$. We want our estimate to be unbiased. In other words we want our predictions to be exact, on average. Mathematically we want: 
 
 $$
 \begin{equation}
@@ -557,23 +594,412 @@ $$
 \end{equation}
 $$
 
-To be able to go from line 3 to 4 we need the relation $\mathbb{E}[z_i] = \mathbb{E}[z_0] = m$. This is the second-order stationarity assumption that we suppose our random field $Z(s)$ fulfills. stationarity is more like a model assumption than an hypothesis to be tested. It is a way to simplify the real world and as always in statistics such assumptions can be removed, leading to more complex models which we'll see later in this document. 
+To be able to go from line 3 to 4 we need the relation $\mathbb{E}[z_i] = \mathbb{E}[z_0] = m$. This is the second-order stationarity assumption that we suppose our random field $Z(s)$ fulfils. stationarity is more like a model assumption than an hypothesis to be tested. It is a way to simplify the model we wish to describe. 
 
-In order for our estimator to be a good one we also need its variance to be as low as possible. 
+The difference between 2 unbiased estimator is their variance. In order for our estimator to be a good one we also need its variance to be as low as possible. 
 
+## Step-by-step code for Ordinary Kriging
 
-# Help
+In this section the code used to build an ordinary kriging model is given. The construction of the variogram needed to find the weights and the actual computation of the weights will be described. 
+
+As for IDW the code will be detailed to explicitly show what is going on under the hood.This is for explanatory purpose only. The package [`geoR`](https://CRAN.R-project.org/package=geoR) contains higher-level functions to perform all the necessary steps of Kriging. The different higher-level functions that will be presented in this document comes from this package. The code for a complete Kriging model using functions from `geoR` will be presented as [the end of this section](#kriging-functions). 
+
+### The semi-variogram
+
+The semi-variogram is a key part of the Kriging model as it is used to compute the weights. It is then important to estimate it properly. First an empirical variogram is built, then a parametric one is fitted on it. 
+
+A semi-variogram gives the strength of the association between 2 points based on the distance between them. The intuition is that when predicting the value at a new location, close points will have a stronger weight as their association strength is high. 
+
+The semi-variogram is a function, $\gamma(h)$, that gives the semi-variance of 2 points separated by a distance $h$. The higher the value of the semi-variance, the lesser strong the association between the points. Our goal in this section is to build this function. First the empirical semi-variogram is built. The association strength is estimated as some distances, this forms a set of points on which a parametric model can be fitted. The parametric semi-variogram will be a function that takes one argument, the distance, and can be computed for every distances. 
+
+#### The empirical semi-variogram
+
+For a translation $h \in \mathbb{R}+$, $N_h = \left\{(s_i,s_j) : dist(s_i, s_j) = h; i,j = 1, \dots,n\right\}$ the set of points separated by distance $h$ and $|N_h|$ the number of points in this set, the empirical semi-variogram is defined by the following relation:
 
 $$
-\begin{equation} 
-\begin{split}
-\mathrm{Var}(\hat{\beta}) & =\mathrm{Var}((X'X)^{-1}X'y)\\
- & =(X'X)^{-1}X'\mathrm{Var}(y)((X'X)^{-1}X')'\\
- & =(X'X)^{-1}X'\mathrm{Var}(y)X(X'X)^{-1}\\
- & =(X'X)^{-1}X'\sigma^{2}IX(X'X)^{-1}\\
- & =(X'X)^{-1}\sigma^{2}
-\end{split}
-\end{equation} 
+\gamma(h) = \frac{1}{2|N_h|} \sum_{i=1}^{|N_h|}\left(Z(s_{i+h})-Z(s_i)\right)^2
 $$
+
+Of course there won't be many pairs of points at exactly $h$ distance. So $N_h$ is actually defined as the set $\left\{(s_i,s_j) : dist(s_i, s_j) = h\pm \delta; i,j = 1, \dots,n\right\}$ with $\delta$ a tolerance range. In practice bins of distances are defined. 
+To compute the empirical variogram we must start by calculating the value $\left(Z(s_{i+h})-Z(s_i)\right)^2$ for every pair of points $(s_i, s_j), i,j = 1, \dots,n$.
+
+```{r semi-variog-cloud, echo = TRUE}
+vario_matrix <- outer(
+  X = sample_points$z,
+  Y = sample_points$z,
+  FUN = function(x, y) (x - y)^2 / 2
+)
+```
+
+```{r semi-variog-cloud-plot}
+# Distance matrix between all points
+dist_matrix <- dist(sample_points[, .(x, y)])
+
+# Coerce matrix to long table so it is easier to plot later on (with the variogram)
+dist_matrix <- dist_matrix %>%
+  as.matrix() %>%
+  as.data.table() %>%
+  .[, point_a := 1:nrow(sample_points)] %>%
+  melt(
+    id.vars = "point_a",
+    variable.name = "point_b",
+    value.name = "distance"
+  ) %>%
+  .[, point_b := as.numeric(point_b)]
+
+# Coerce to long table
+vario_matrix <- vario_matrix %>%
+  as.data.table() %>%
+  setNames(as.character(1:nrow(sample_points))) %>%
+  .[, point_a := 1:nrow(sample_points)] %>%
+  melt(
+    id.vars = "point_a",
+    variable.name = "point_b",
+    value.name = "semi_variance"
+  ) %>%
+  .[, point_b := as.numeric(point_b)]
+
+# Build one table from distance and variogram
+point_variogram <- merge(
+  x = dist_matrix,
+  y = vario_matrix,
+  by = c("point_a", "point_b"),
+  all = TRUE,
+  sort = FALSE
+)
+
+# Visualisation of the variogram scatter plot
+ggplot(
+  data = point_variogram,
+  mapping = aes(x = distance, y = semi_variance)
+) +
+  geom_point(
+    alpha = .3
+  ) +
+  labs(
+    x = "Distance",
+    y = latex2exp::TeX("$\\frac{(Z(s_i) - Z(s_j))^2}{2}$"),
+    title = "Semi-variance by pair of points"
+  )
+```
+
+The semi-variogram is computed using these points. Bins of distances are created and all the points inside each bin are averaged. The result is what we call the empirical semi-variogram. 
+The first simple approach is to divide the distances into bins of equal width. This is simply obtained with the `cut()` function.
+
+```{r semi-variog-cut1, echo = TRUE}
+# Create classes of distance on which average semi variance will be computed
+point_variogram[, group1 := cut(distance, 15)]
+point_variogram[, x := define_center(group1)] # extract center of the class from 'cut' labels
+
+# Compute the average semi-variance by distance group
+empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
+```
+
+The resulting points are visualised in the following figure. There is one point per group defined (15 in this case). The x-value of each point is the center of the distance bin, the y-value is the average of the $\left(Z(s_{i+h})-Z(s_i)\right)^2$ value for each point in the bin. 
+
+```{r semi-variog-cut1-plot}
+plot_variogram(empirical_variogram)
+```
+
+There are several things one should pay attention to when analysing an empirical variogram: 
+
+* the shape of the semi-variogram: recall the Tobler's first law of geography, distant things are less related than close ones. In the context of a variogram, it means that the semi-variance should be increasing with the distance. It is all the more true that when we will fit a parametric semi-variogram to the empirical one, the different models that we will use are all increasing with the distance. 
+* the representativeness of each point: each point is the average of the value of all the points in the bin. If the number of points in the bin is too small or if the points have really different values then taking the point does not carry enough information.
+
+Here the semi-variogram is not increasing with the distance, after 0.75. To evaluate the representativeness of each point we can plot the distribution of semi-variance by group using boxplots. 
+
+```{r semi-variog-cut1-boxplot, fig.width=9}
+plot_variogram_box(point_variogram, empirical_variogram)
+```
+
+We want the boxes to be as small as possible and to be all the same size. It is difficult to know when our choice of bin is good enough, there is not a single best choice.
+
+Our second try at defining bins will consist in setting a max distance above which the semi-variance is not computed. This should solve the decreasing issue of our semi-variogram. We consider that 2 points separated by more than a specific value no longer don't influence each other and should not be taken into account when computing the semi-variogram. Besides the bins are constructed to be of equal size and not equal width. This is done using the function `ggplot2::cut_number()`. 
+
+```{r semi-variog-cut2, echo = TRUE}
+# Create evenly populated classes of distances
+point_variogram[distance < .8, group3 := cut_number(distance, 10)]
+point_variogram[, x := define_center(group3)]
+
+# Compute the average semi-variance by distance group
+empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
+```
+
+
+```{r semi-variog-cut2-plot}
+plot_variogram(empirical_variogram[!is.na(x)])
+```
+
+The semi-variogram is now increasing, on the distances of interest. Let's look at the distribution of each bins. 
+
+```{r semi-variog-cut2-boxplot, fig.width=9}
+plot_variogram_box(point_variogram[!is.na(x)], empirical_variogram[!is.na(x)])
+```
+
+By construction the bins all have the same number of points, the boxes are not too large. The most important part of a semi-variogram is its shape for low distances. Because usually only close points will have an impact on the prediction, it is important to have a good estimate of the association semi-variance at small distances. 
+
+Our last try consists of bins that are smaller for small distances and then as before. 4 bins are defined for the first 15% of the data then 8 for the remaining 85%.
+
+```{r semi-variog-cut3, echo = TRUE}
+# Smaller groups at the beginning
+point_variogram[distance < .8, group4 := cut(distance, breaks = quantile(distance, c(seq(0, .15, by = .05), seq(.2, 1, length.out = 9))))]
+point_variogram[, x := define_center(group4)]
+
+# Compute the average semi-variance by distance group
+empirical_variogram <- point_variogram[, .(count = .N, vario_mean = mean(semi_variance)), by = x]
+```
+
+
+```{r semi-variog-cut3-plot}
+plot_variogram(empirical_variogram[!is.na(x)])
+```
+
+The semi-variogram is now increasing, on the distances of interest. Let's look at the distribution of each bins. 
+
+```{r semi-variog-cut3-boxplot, fig.width=9}
+plot_variogram_box(point_variogram[!is.na(x)], empirical_variogram[!is.na(x)])
+```
+
+The four first bins contains less values than the other eight. The boxes are all quite small so this empirical semi-variogram is chosen as a basis for a parametric one. 
+
+#### The parametric semi-variogram
+
+Now that an empirical semi-variogram has been defined, it is possible to fit a parametric one on it. 
+
+Parametric semi-variogam are pre-defined functions whose parameters are to be fitted on data. Different functions exist, 3 will be tested in this document, the gaussian one, the exponential one and the spheric one. 
+
+```{r parametric-variog}
+sigma <- 20
+phi <- 100
+nugget <- 0
+x <- seq(0, 150, length.out = 1000)
+vario_mod_spherical <- ifelse(
+  test = x > phi,
+  yes = nugget + sigma,
+  no = nugget + sigma * (3 / 2 * (x / phi) - 1 / 2 * (x / phi)^3)
+)
+vario_mod_gaussian <- ifelse(
+  test = x == 0,
+  yes = 0,
+  no = nugget + sigma * (1 - exp(-x^2 / (phi - 40)^2))
+)
+vario_mod_exponential <- ifelse(
+  test = x == 0,
+  yes = 0,
+  no = nugget + sigma * (1 - exp(-x / (phi - 40)))
+)
+data.frame(
+  x = rep(x, 3),
+  y = c(vario_mod_spherical, vario_mod_gaussian, vario_mod_exponential),
+  type = rep(c("Spherical", "Gaussian", "Exponential"), each = 1000)
+) %>% 
+  ggplot(
+    mapping = aes(x = x, y = y, color = type)
+  ) + 
+  geom_line() + 
+  labs(
+    title = "Exemple of 3 parametric semi-variograms",
+    x = "Distance",
+    y = "Semi-variance",
+    color = "Model"
+  ) + 
+  theme(
+    legend.position = c(.8, .3)
+  )
+```
+
+The functions are defined with 3 parameters:
+
+* the nugget $\gamma_0$ is the semi-variance when $h \to 0$. It represents the measurement error. 
+* the sill $\sigma$ is the limit of the semi-variogram when $h \to \infty$.
+* the range $\phi$ is the distance above which the semi-variance is close to the sill. By convention it is when 95% of the sill is obtained for semi-variogram with a sill (as some may tends towards $\infty$ when $h \to \infty$).
+
+$$
+\begin{gathered}
+\text{Exponential : } \gamma(h) = \gamma_0 + \sigma^2\left[1 - \exp\left(-\frac{h}{\phi}\right)\right] \\
+\text{Gaussian : } \gamma(h) = \gamma_0 + \sigma^2\left[1 - \exp\left(-\frac{h^2}{\phi^2}\right)\right] \\
+\text{Spheric : } \gamma(h) = \begin{cases}
+\gamma_0 + \sigma \ \text{ if } h > \phi\\
+\gamma_0 + \sigma \left(\frac{3h}{2\phi} - \frac{1h^3}{2\phi^3}\right) \ \text{ else }
+\end{cases}
+\end{gathered}
+$$
+Other functions can be used but those are the most common ones. They convey a strong prior on the spatial dependance, there is a finite limit when $h \to \infty$. 
+
+A numerical optimisation is used to fit the parameters. The function to minimise is the sum of squared errors between the parametric model values and the ones of the empirical semi-variogram. For instance, with $\gamma_1, \dots, \gamma_k$ the semi-variance of the $k$ bins $h_1, \dots, h_k$, the loss of the exponential model is:
+
+$$
+Loss(\gamma_0, \sigma, \phi) = \sum_{i=1}^{k}\left(\gamma_0 + \sigma^2\left[1 - \exp\left(-\frac{h_i}{\phi}\right)\right] - \gamma_i\right)^2
+$$
+We want the parameters $\gamma_0, \sigma, \phi$ that minimise the loss. There are simply obtained with the `optim()` function.
+
+```{r variog_fit, echo = TRUE, eval = FALSE}
+# Define the loss function needed for the optim function. It takes 3 arguments: the parameters
+# to find, the distances and semi-variance of the empirical semi-variogram
+loss_function <- function(params, x, vario_emp) {
+  sigma <- params[1]
+  phi <- params[2]
+  nugget <- params[3]
+  vario_mod <- ifelse(
+      test = x == 0,
+      yes = 0,
+      no = nugget + sigma * (1 - exp(-x / phi))
+    )
+  loss <- sum((vario_emp - vario_mod)^2)
+  return(loss)
+}
+exponential_param <- optim(
+  par = c(2.2, .4, 0),
+  fn = loss_function,
+  x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
+  vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)]
+)
+```
+
+The obtained parameters, the object `exponential_param`, can then be used to build the semi-variogram function.
+
+```{r variog_func, echo = TRUE, eval = FALSE}
+vario_func <- function(x) {
+  return(ifelse(
+    test = x == 0,
+    yes = 0,
+    no = exponential_param[3] + exponential_param[1] * (1 - exp(-x / exponential_param[2]))
+  ))
+}
+```
+
+The quality of adjustment of the 3 parametric semi-variograms to the empirical one can be assess visually and by looking at the loss value. 
+
+```{r variog_fit_2}
+loss_function <- function(params, x, vario_emp, cov_model) {
+  sigma <- params[1]
+  phi <- params[2]
+  nugget <- params[3]
+  if (cov_model == "spherical") {
+    vario_mod <- ifelse(
+      test = x > phi,
+      yes = nugget + sigma,
+      no = nugget + sigma * (3 / 2 * (x / phi) - 1 / 2 * (x / phi)^3)
+    )
+  } else if (cov_model == "gaussian") {
+    vario_mod <- ifelse(
+      test = x == 0,
+      yes = 0,
+      no = nugget + sigma * (1 - exp(-x^2 / phi^2))
+    )
+  } else if (cov_model == "exponential") {
+    vario_mod <- ifelse(
+      test = x == 0,
+      yes = 0,
+      no = nugget + sigma * (1 - exp(-x / phi))
+    )
+  }
+  loss <- sum((vario_emp - vario_mod)^2)
+  return(loss)
+}
+
+# Numeric optimisation to find the best parameters
+gausian_param <- optim(
+  par = c(2.2, .4, 0),
+  fn = loss_function,
+  x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
+  vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)],
+  cov_model = "gaussian"
+)
+spherical_param <- optim(
+  par = c(2.2, .4, 0),
+  fn = loss_function,
+  x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
+  vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)],
+  cov_model = "spherical"
+)
+exponential_param <- optim(
+  par = c(2.2, .4, 0),
+  fn = loss_function,
+  x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
+  vario_emp = empirical_variogram$vario_mean[!is.na(empirical_variogram$x)],
+  cov_model = "exponential"
+)
+# Visualise the parametric variogram and the empirical one
+vario_fit_data <- data.frame(
+  x = rep(seq(0, .8, length.out = 1000), 3),
+  type = rep(c("Exponential", "Gaussian", "Spherical"), each = 1000),
+  y = c(
+    exponential_param$par[3] + exponential_param$par[1] * (1 - exp(-seq(0, .8, length.out = 1000) / exponential_param$par[2])),
+    gausian_param$par[3] + gausian_param$par[1] * (1 - exp(-seq(0, .8, length.out = 1000)^2 / gausian_param$par[2]^2)),
+    ifelse(
+      test = seq(0, .8, length.out = 1000) > spherical_param$par[2],
+      yes = spherical_param$par[3] + spherical_param$par[1],
+      no = spherical_param$par[3] + spherical_param$par[1] * (3 / 2 * (seq(0, .8, length.out = 1000) / spherical_param$par[2]) - 1 / 2 * (seq(0, .8, length.out = 1000) / spherical_param$par[2])^3)
+    )
+  )
+)
+plot_variogram(empirical_variogram[!is.na(x)]) +
+  geom_line(
+    data = vario_fit_data,
+    mapping = aes(x = x, y = y, color = type)
+  ) +
+  guides(
+    colour = guide_legend(override.aes = list(size = 2))
+  ) +
+  scale_colour_discrete(
+    labels = c(
+      "Exponential" = paste0("Exponential: ", round(exponential_param$value, 2)),
+      "Gaussian" = paste0("Gaussian: ", round(gausian_param$value, 2)),
+      "Spherical" = paste0("Spherical: ", round(spherical_param$value, 2))
+    )
+  ) + 
+  labs(
+    title = "3 parametric semi-variograms fitted on the empirical one",
+    subtitle = "The loss value of each parametric model is given in the legend.",
+    y = "Semi-variance",
+    color = "Parametric model"
+  ) +
+  theme(
+    legend.position = c(.8, .2)
+  )
+```
+
+The exponential model has the lowest loss value. Nevertheless we want our semi-variogram to be precise on low distances and the gaussian and spherical ones seem to be better adjusted at lower distances. The exponential model has a better overall fit because it is closer to the last points on average. The spherical model is the one that will be selected for now on. 
+
+#### Defining the semi-variogram with igh-level functions
+
+All of the above can be done with functions from the `geoR` package. Here is an example code that you might do if you were to build a semi-variogram.
+
+```{r variog-code, echo = TRUE}
+# Create a geodata object needed for all functions in the geoR package
+geodata <- as.geodata(sample_points)
+
+# Visualise the variogram cloud (semi-variance by pair of points)
+variogram_c <- variog(geodata, option = "cloud")
+plot(variogram_c)
+
+# Build the empirical semi-variogram with default argument (13 bins, no maximal distance)
+variogram <- variog(geodata)
+plot(variogram)
+
+# Visualise the distribution of semi-variance by bin
+variogram_c <- variog(geodata, bin.cloud = TRUE)
+plot(variogram_c)
+
+# Build the empirical semi-variogram with default argument (13 bins, no maximal distance)
+variogram <- variog(
+  geodata = geodata,
+  max.dist = 70, # Specify the maximum distance at which the semi-variance is computed
+  breaks = c(seq(0, 30, 5), seq(30, 70, 10)) # limits of the bins to create
+)
+plot(variogram)
+
+# Fit an exponential parametric model on the empirical semi-variogram
+vario_fit_exp <- variofit(
+  vario = variogram, # the empirical variogram
+  cov.model = "exponential", # type of parametric model to adjust
+  fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
+)
+plot(vario_fit_exp)
+```
+
+### The Kriging weights
+
 
 # References
