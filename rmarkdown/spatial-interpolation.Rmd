@@ -34,10 +34,12 @@ opts_chunk$set(echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE, vcac
 library("cowplot") # Export plots
 library("data.table") # Fast dataset manipulation
 import::from("fields", "rdist") # rdist function
+library("geoR") # Analysis of geo-statistical data
 library("ggplot2") # Data visualisations using the Grammar of Graphics
 library("ggrepel") # Text labels
 library("gstat") # Geo-statistical modelling
 library("magrittr") # Pipe operators
+library("progress") # Progress bars
 library("stringi") # String manipulation
 source("../src/helpers.R") # Load custom functions
 
@@ -63,6 +65,8 @@ scale_colour_continuous <- function(...) ggplot2::scale_colour_viridis_c(..., op
 scale_colour_discrete <- function(...) ggplot2::scale_colour_viridis_d(..., option = "viridis")
 scale_fill_continuous <- function(...) ggplot2::scale_fill_viridis_c(..., option = "viridis")
 scale_fill_discrete <- function(...) ggplot2::scale_fill_viridis_d(..., option = "viridis")
+
+options(geoR.messages = FALSE)
 ```
 
 # Introduction
@@ -578,7 +582,7 @@ It is a function that only depends on $h$, the distance between 2 points, and th
 
 Now that some basic concepts have been defined, let's dive into the kriging method. We will be defining ordinary Kriging.
 
-## How it works
+## How it works {#how-it-works}
 
 Recall that our goal is to find the weights of this equation $\widehat{z_0} = \sum_{i = 1}^{n}\lambda_i z_i$. We want to find the weights $\lambda_i$ required to predict the value $z_0$. We want our estimate to be unbiased. In other words we want our predictions to be exact, on average. Mathematically we want: 
 
@@ -598,11 +602,13 @@ To be able to go from line 3 to 4 we need the relation $\mathbb{E}[z_i] = \mathb
 
 The difference between 2 unbiased estimator is their variance. In order for our estimator to be a good one we also need its variance to be as low as possible. 
 
+TODO : optimisation procedure
+
 ## Step-by-step code for Ordinary Kriging
 
 In this section the code used to build an ordinary kriging model is given. The construction of the variogram needed to find the weights and the actual computation of the weights will be described. 
 
-As for IDW the code will be detailed to explicitly show what is going on under the hood.This is for explanatory purpose only. The package [`geoR`](https://CRAN.R-project.org/package=geoR) contains higher-level functions to perform all the necessary steps of Kriging. The different higher-level functions that will be presented in this document comes from this package. The code for a complete Kriging model using functions from `geoR` will be presented as [the end of this section](#kriging-functions). 
+As for IDW the code will be detailed to explicitly show what is going on under the hood. This is for explanatory purpose only. The package [`geoR`](https://CRAN.R-project.org/package=geoR) contains higher-level functions to perform all the necessary steps of Kriging. The different higher-level functions that will be presented in this document comes from this package. The code for a complete Kriging model using functions from `geoR` will be presented as [the end of this section](#kriging-functions). 
 
 ### The semi-variogram
 
@@ -831,7 +837,7 @@ A numerical optimisation is used to fit the parameters. The function to minimise
 $$
 Loss(\gamma_0, \sigma, \phi) = \sum_{i=1}^{k}\left(\gamma_0 + \sigma^2\left[1 - \exp\left(-\frac{h_i}{\phi}\right)\right] - \gamma_i\right)^2
 $$
-We want the parameters $\gamma_0, \sigma, \phi$ that minimise the loss. There are simply obtained with the `optim()` function.
+We want the parameters $\gamma_0, \sigma, \phi$ that minimise the loss. There are simply obtained with the `optim()` function. Here we specify a spherical model.
 
 ```{r variog_fit, echo = TRUE, eval = FALSE}
 # Define the loss function needed for the optim function. It takes 3 arguments: the parameters
@@ -841,14 +847,14 @@ loss_function <- function(params, x, vario_emp) {
   phi <- params[2]
   nugget <- params[3]
   vario_mod <- ifelse(
-      test = x == 0,
-      yes = 0,
-      no = nugget + sigma * (1 - exp(-x / phi))
+      test = x > phi,
+      yes = nugget + sigma,
+      no = nugget + sigma * (3 / 2 * (x / phi) - 1 / 2 * (x / phi)^3)
     )
   loss <- sum((vario_emp - vario_mod)^2)
   return(loss)
 }
-exponential_param <- optim(
+spherical_param <- optim(
   par = c(2.2, .4, 0),
   fn = loss_function,
   x =  empirical_variogram$x[!is.na(empirical_variogram$x)],
@@ -856,15 +862,18 @@ exponential_param <- optim(
 )
 ```
 
-The obtained parameters, the object `exponential_param`, can then be used to build the semi-variogram function.
+The obtained parameters, the object `spherical_param`, can then be used to build the semi-variogram function.
 
 ```{r variog_func, echo = TRUE, eval = FALSE}
 vario_func <- function(x) {
+  sigma <- spherical_param$par[1]
+  phi <- spherical_param$par[2]
+  nugget <- spherical_param$par[3]
   return(ifelse(
-    test = x == 0,
-    yes = 0,
-    no = exponential_param[3] + exponential_param[1] * (1 - exp(-x / exponential_param[2]))
-  ))
+      test = x > phi,
+      yes = nugget + sigma,
+      no = nugget + sigma * (3 / 2 * (x / phi) - 1 / 2 * (x / phi)^3)
+    ))
 }
 ```
 
@@ -962,11 +971,150 @@ plot_variogram(empirical_variogram[!is.na(x)]) +
 
 The exponential model has the lowest loss value. Nevertheless we want our semi-variogram to be precise on low distances and the gaussian and spherical ones seem to be better adjusted at lower distances. The exponential model has a better overall fit because it is closer to the last points on average. The spherical model is the one that will be selected for now on. 
 
-#### Defining the semi-variogram with igh-level functions
+### The Kriging weights
 
-All of the above can be done with functions from the `geoR` package. Here is an example code that you might do if you were to build a semi-variogram.
+The Kriging weights, defined in the _how it works_ [section](#how-it-works), are computed for a new point $s_0$ with the following expression. $\mu$ is the Lagrange multiplier, coming from the optimisation resolution process.
 
-```{r variog-code, echo = TRUE}
+$$
+\begin{bmatrix}
+\omega_1 \\ \vdots \\ \omega_n \\ \mu
+\end{bmatrix}
+=
+\begin{bmatrix}
+0 & \cdots & \gamma(s_1,s_n) &1 \\
+\vdots & \ddots & \vdots  & \vdots \\
+\gamma(s_n,s_1) & \cdots & 0 & 1 \\
+1 &\cdots& 1 & 0 
+\end{bmatrix}^{-1}
+\begin{bmatrix}\gamma(s_1,s_0) \\ \vdots \\ \gamma(s_n,s_0) \\ 1\end{bmatrix}
+$$
+Now that the function $\gamma$ is defined, computing the weights $\omega_1, \dots, \omega_n$ is simply a matter of matrix inversion and multiplication. 
+
+The following piece of code does the weight computation for a single point. It starts by creating the needed matrix and vector and then performs the multiplication to obtain the weights.
+
+```{r kriging-weights, echo = TRUE, eval = FALSE}
+# Coordinates of the point s0 to predict
+point_pred <- c(.5, .5)
+
+# # Add row names to easily spot points
+# rownames(sample_points) <- paste0("s", 1:nrow(sample_points))
+
+# Distance matrix of s1,...sn and s0
+matrix_dist <- as.matrix(sample_points[, c("x", "y")]) %>% # transform the coordinates into a matrix
+  rbind("s_pred" = point_pred) %>% # add s0
+  wordspace::dist.matrix(method = "euclidean") # compute the distance between all points
+
+# Extract the distance between s0 and sample points s1,...,sn (distances needed to compute the vector)
+predict_dist <- matrix_dist[1:100, 101]
+
+# Remove distance with s0 (distances needed to compute the matrix)
+sample_dist <- matrix_dist[1:100, 1:100]
+
+# Function to compute the variogram
+vario_func <- function(x) {
+  return(ifelse(
+    test = x > spherical_param$par[2],
+    yes = spherical_param$par[3] + spherical_param$par[1],
+    no = spherical_param$par[3] + spherical_param$par[1] * (3 / 2 * (x / spherical_param$par[2]) - 1 / 2 * (x / spherical_param$par[2])^3)
+  ))
+}
+
+# Variogram matrix
+variogram_matrix <- apply(
+  X = sample_dist,
+  MARGIN = c(1, 2),
+  FUN = function(x) vario_func(x)
+)
+
+# Add the extra row and column of 1 (and 0 on last cell) to complete the matrix
+variogram_matrix <- rbind(variogram_matrix, 1)
+variogram_matrix <- cbind(variogram_matrix, 1)
+variogram_matrix[nrow(variogram_matrix), ncol(variogram_matrix)] <- 0
+
+# Inverse the matrix
+variogram_matrix_inv <- solve(variogram_matrix)
+
+# Variogram vector
+variogram_vec <- vario_func(predict_dist)
+
+# Add extra 1
+variogram_vec <- c(variogram_vec, 1)
+
+# Compute the vector of weights
+weights <- variogram_matrix_inv %*% variogram_vec
+
+# Compute the value at s0 by multiplying the weights and the values at sample points
+sum(weights[1:100] * sample_points$z)
+```
+
+The prediction for every point of the grid is simply obtained by applying the above code for every point s0. Something like the following piece of code could be used. It is super slow and of course a better alternative will be presented.
+
+```{r kriging-weights-all, echo = TRUE, eval = FALSE}
+pb <- progress_bar$new(total = nrow(simulated_grid), format = "[:bar] :current/:total (:percent) :elapsedfull")
+grid_pred <- sapply(
+  X = seq_len(nrow(simulated_grid)),
+  FUN = function(i) {
+    point_pred <- as.numeric(simulated_grid[i, c("x", "y")])
+    matrix_dist <- as.matrix(sample_points[, c("x", "y")]) %>%
+      rbind("s_pred" = point_pred) %>%
+      wordspace::dist.matrix(method = "euclidean")
+    predict_dist <- matrix_dist[1:100, 101]
+    sample_dist <- matrix_dist[1:100, 1:100]
+    vario_func <- function(x) {
+      return(ifelse(
+        test = x > spherical_param$par[2],
+        yes = spherical_param$par[3] + spherical_param$par[1],
+        no = spherical_param$par[3] + spherical_param$par[1] * (3 / 2 * (x / spherical_param$par[2]) - 1 / 2 * (x / spherical_param$par[2])^3)
+      ))
+    }
+    variogram_matrix <- apply(
+      X = sample_dist,
+      MARGIN = c(1, 2),
+      FUN = function(x) vario_func(x)
+    )
+    variogram_matrix <- rbind(variogram_matrix, 1)
+    variogram_matrix <- cbind(variogram_matrix, 1)
+    variogram_matrix[nrow(variogram_matrix), ncol(variogram_matrix)] <- 0
+    variogram_matrix_inv <- solve(variogram_matrix)
+    variogram_vec <- vario_func(predict_dist)
+    variogram_vec <- c(variogram_vec, 1)
+    weights <- variogram_matrix_inv %*% variogram_vec
+    pb$tick()
+    return(sum(weights[1:100] * sample_points$z))
+  }
+)
+```
+
+
+```{r kriging-weights-map}
+grid_pred <- readRDS("../output/kriging_pred.rds")
+
+data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "true" = simulated_grid$z) %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+  plot_map("Prediction with Kriging and real data") +
+  facet_grid(
+    cols = vars(type),
+    labeller = labeller(type = c("pred" = "Kriging", "true" = "Real data"))
+  ) +
+  theme(
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
+  )
+```
+
+The resulting map is quite like the true data but in a smoother way. Kriging produces smooth prediction (it is a a weighted average). 
+
+## The geoR package {#kriging-functions}
+
+Of course in practice there is no need to write all the above code. 
+
+### Defining the semi-variogram with high-level functions
+
+```{r variog-code, echo = TRUE, eval = FALSE}
 # Create a geodata object needed for all functions in the geoR package
 geodata <- as.geodata(sample_points)
 
@@ -982,24 +1130,88 @@ plot(variogram)
 variogram_c <- variog(geodata, bin.cloud = TRUE)
 plot(variogram_c)
 
-# Build the empirical semi-variogram with default argument (13 bins, no maximal distance)
+# Build the empirical semi-variogram with default argument (13 bins, no maximal distance) 
 variogram <- variog(
   geodata = geodata,
   max.dist = 70, # Specify the maximum distance at which the semi-variance is computed
-  breaks = c(seq(0, 30, 5), seq(30, 70, 10)) # limits of the bins to create
+  breaks = quantile(point_variogram$distance, c(seq(0, .15, by = .05), seq(.2, 1, length.out = 9))) # limits of the bins to create
 )
 plot(variogram)
 
 # Fit an exponential parametric model on the empirical semi-variogram
-vario_fit_exp <- variofit(
+vario_fit_spherical <- variofit(
   vario = variogram, # the empirical variogram
-  cov.model = "exponential", # type of parametric model to adjust
+  cov.model = "spherical", # type of parametric model to adjust
   fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
 )
-plot(vario_fit_exp)
 ```
 
-### The Kriging weights
+### Computing the Kriging weights
+
+```{r krigin-code, echo = TRUE, eval = FALSE}
+# Define the point where the predictions should be done
+grid <- expand.grid(x = seq(0, 1, length.out = 101), y = seq(0, 1, length.out = 101))
+
+# Build the Kriging model with the spherical variogram
+krige_control <- krige.control(
+  type.krige = "ok", # ordinary Kriging
+  obj.model = vario_fit_spherical
+)
+krige <- krige.conv(
+  geodata = geodata, # observations
+  locations = grid, # locations of the points to predict
+  krige = krige_control
+)
+```
+
+Let's check that indeed both solution produce the same output.
+
+```{r kriging-check}
+geodata <- as.geodata(sample_points)
+variogram <- variog(
+  geodata = geodata,
+  max.dist = .8,
+  breaks = levels(point_variogram$group4) %>%
+      as.character() %>%
+      stri_replace_all_regex("(\\(|\\[|\\])", "") %>%
+      stri_split_fixed(",") %>% 
+    sapply(as.numeric) %>% 
+    as.vector() %>% 
+    unique()
+)
+vario_fit_spherical <- variofit(
+  vario = variogram, # the empirical variogram
+  cov.model = "spherical", # type of parametric model to adjust
+  fix.nugget = TRUE,
+  nugget = 0.221
+)
+vario_fit_spherical$cov.pars <- spherical_param$par[1:2]
+grid <- expand.grid(x = seq(0, 1, length.out = 101), y = seq(0, 1, length.out = 101))
+krige_control <- krige.control(
+  type.krige = "ok", # ordinary Kriging
+  obj.model = vario_fit_spherical
+)
+krige <- krige.conv(
+  geodata = geodata, # observations
+  locations = simulated_grid[, c("x", "y")], # locations of the points to predict
+  krige = krige_control
+)
+data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "pred_geor" = krige$predict) %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+  plot_map("Prediction with Kriging and real data") +
+  facet_grid(
+    cols = vars(type),
+    labeller = labeller(type = c("pred" = "Low-level functions", "pred_geor" = "geoR package"))
+  ) +
+  theme(
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
+  )
+```
 
 
 # References
