@@ -9,6 +9,7 @@ import::from("fields", "rdist") # rdist function
 library("ggplot2") # Data visualisations using the Grammar of Graphics
 library("gstat") # Geo-statistical modelling
 library("ipdw") # Inverse path distance weighting
+library("progress") # Progress bars
 library("sf") # Spatial data manipulation
 library("stringi") # String manipulation
 source("src/helpers.R") # Load custom functions
@@ -358,6 +359,7 @@ grid_pred <- sapply(
     return(sum(weights[1:100] * sample_points$z))
   }
 )
+saveRDS(grid_pred, "output/kriging_pred.rds")
 
 # Plot the result alongside the true data
 data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "true" = simulated_grid$z) %>%
