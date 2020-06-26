@@ -4,7 +4,7 @@
 # Set-up --------------------------------------------------------------------------------------
 
 library("data.table") # Fast dataset manipulation
-library("geoR") # Analysis of geostatistical data
+library("geoR") # Analysis of geo-statistical data
 options(geoR.messages = FALSE)
 library("ggplot2") # Data visualisations using the Grammar of Graphics
 library("magrittr") # Pipe operators
@@ -36,7 +36,7 @@ scale_fill_discrete <- function(...) ggplot2::scale_fill_viridis_d(..., option =
 
 # Simple data ---------------------------------------------------------------------------------
 
-# Data is generated using gaussian random fileds
+# Data is generated using gaussian random fields
 
 # Map on the [0,1]x[0,1] grid
 base_map <- grf(
