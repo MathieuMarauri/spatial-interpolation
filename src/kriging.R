@@ -7,10 +7,9 @@
 library("data.table") # Fast dataset manipulation
 import::from("fields", "rdist") # rdist function
 library("ggplot2") # Data visualisations using the Grammar of Graphics
-library("gstat") # Geo-statistical modelling
-library("ipdw") # Inverse path distance weighting
+library("geoR") # Geo-statistical modelling
+library("magrittr") # Pipe operators
 library("progress") # Progress bars
-library("sf") # Spatial data manipulation
 library("stringi") # String manipulation
 source("src/helpers.R") # Load custom functions
 
@@ -266,12 +265,12 @@ plot_variogram(empirical_variogram[!is.na(x)]) +
 
 # Kriging step by step ------------------------------------------------------------------------
 
-# Pediction is made step by step for a single point first, then for the grid.
+# Prediction is made step by step for a single point first, then for the grid.
 
 ### For one point
 
 # Coordinates of point to predict
-point_pred <- c(.5, .5)
+point_pred <- c(.38, .24)
 
 # Add row names to easily spot points
 rownames(sample_points) <- paste0("s", 1:nrow(sample_points))
@@ -343,6 +342,13 @@ grid_pred <- sapply(
         no = spherical_param$par[3] + spherical_param$par[1] * (3 / 2 * (x / spherical_param$par[2]) - 1 / 2 * (x / spherical_param$par[2])^3)
       ))
     }
+    # vario_func <- function(x) {
+    #   return(ifelse(
+    #     test = x == 0,
+    #     yes = 0,
+    #     no = spherical_param$par[3] + spherical_param$par[1] * (1 - exp(-x^2 / spherical_param$par[2]^2))
+    #   ))
+    # }
     variogram_matrix <- apply(
       X = sample_dist,
       MARGIN = c(1, 2),
@@ -360,6 +366,7 @@ grid_pred <- sapply(
   }
 )
 saveRDS(grid_pred, "output/kriging_pred.rds")
+grid_pred <- readRDS("output/kriging_pred.rds")
 
 # Plot the result alongside the true data
 data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "true" = simulated_grid$z) %>%
@@ -378,4 +385,52 @@ data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "true" = simulated
     panel.spacing = unit(2.5, "lines")
   )
 
+
+# geoR functions -------------------------------------------------------------------------
+
+# Compare with result from Kriging with geoR functions.
+
+geodata <- as.geodata(sample_points)
+variogram <- variog(
+  geodata = geodata,
+  max.dist = .8,
+  breaks = levels(point_variogram$group4) %>%
+    as.character() %>%
+    stri_replace_all_regex("(\\(|\\[|\\])", "") %>%
+    stri_split_fixed(",") %>%
+    sapply(as.numeric) %>%
+    as.vector() %>%
+    unique()
+)
+vario_fit_spherical <- variofit(
+  vario = variogram, # the empirical variogram
+  cov.model = "gaussian", # type of parametric model to adjust
+  fix.nugget = FALSE
+)
+vario_fit_spherical$cov.pars <- gausian_param$par[1:2]
+vario_fit_spherical$nugget <- gausian_param$par[3]
+krige_control <- krige.control(
+  type.krige = "ok", # ordinary Kriging
+  obj.model = vario_fit_spherical
+)
+krige <- krige.conv(
+  geodata = geodata, # observations
+  locations = simulated_grid[, c("x", "y")], # locations of the points to predict
+  krige = krige_control
+)
+data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "pred_geor" = krige$predict) %>%
+  melt(
+    id.vars = c("x", "y"),
+    variable.name = "type",
+    value.name = "z"
+  ) %>%
+  plot_map("Prediction with Kriging and real data") +
+  facet_grid(
+    cols = vars(type),
+    labeller = labeller(type = c("pred" = "Low-level functions", "pred_geor" = "geoR package"))
+  ) +
+  theme(
+    strip.text = element_text(size = 12),
+    panel.spacing = unit(2.5, "lines")
+  )
 
