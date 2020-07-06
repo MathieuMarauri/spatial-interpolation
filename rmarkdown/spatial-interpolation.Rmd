@@ -85,23 +85,25 @@ There exists different solutions to this spatial interpolation problem. They oft
 
 Before going into detail on the way these methods work, let's give a proper mathematical definition of the problem.
 
-Let's say you have $n$ measures $z_1, \dots, z_n$ of some variable $Z$ at $n$ points in some region of space $R \subset \mathbb{R}^2$. You want to know the value of $Z$ at every points in that region $R$. $Z$ could be the concentration in some minerals and $R$ a coastal region for example. 
+Let's say you have $n$ measures $z_1, \dots, z_n$ of some variable $Z$ at $n$ points in some region of space $R \subset \mathbb{R}^2$. You want to know the value of $Z$ at every points in that region $R$. $Z$ could be the concentration in some minerals and $R$ a mining region.
 
-The ultimate goal is to define a function that for each point $(x, y) \in \mathbb{R}^2$ associates a value $z \in \mathbb{R}$.
+The ultimate goal is to define a function that for each point $(x, y) \in R$ associates a value $z \in \mathbb{R}$.
 
 $$
-(x, y) \in \mathbb{R}^2 \rightarrow z \in \mathbb{R}
+f \ : \ (x, y) \in R \rightarrow z \in \mathbb{R}
 $$
-Finding this function is what spatial interpolation is about. To do so the only input data at your disposal are the $n$ estimates at sample points $s_1, \dots , s_n$, $s_i \in \mathbb{R}^2, i = 1 \dots n$. 
+Finding this function is what spatial interpolation is about. To do so the only input data at your disposal are the $n$ estimates at sample points $s_1, \dots , s_n$, $s_i \in R, i = 1 \dots n$. 
 
-Different methods exist [see @overview and @KrigeageThese] and most of them have the same general formula. The prediction $\widehat{Z_{s_0}}$ for a point $s_0 \in \mathbb{R}^2$ is given by the following relation:
+Different methods exist [see @overview ; and @KrigeageThese] and most of them have the same general formula. The prediction at a point $s_0 \in R$ of the variable $Z$, $\widehat{Z_{s_0}}$, is given by the following relation:
 
 <a id="the-equation"></a>
 $$
-\widehat{Z_{s_0}} = \sum_{i = 1}^{n}\lambda_i Z_{s_i}
+\widehat{Z_{s_0}} = \sum_{i = 1}^{n}\lambda_i z_{s_i}
 $$
 
-The predictions are a weighted average of the values observed at sample points $s_1, \dots , s_n$. The way the weights $\lambda_1, \dots , \lambda_n$ are defined is what make each method different from the others. However weights are defined, every method follows the [Tobler's first law of geography](https://en.wikipedia.org/wiki/Tobler%27s_first_law_of_geography) that states that _"everything is related to everything else, but near things are more related than distant things"_. Some methods are deterministic, meaning you don't get a confidence interval whereas others are stochastic. 
+The predictions are a weighted average of the values observed at sample points $s_1, \dots , s_n$. The way the weights $\lambda_1, \dots , \lambda_n$ are defined is what make each method different from the others. However weights are defined, every method follows the [Tobler's first law of geography](https://en.wikipedia.org/wiki/Tobler%27s_first_law_of_geography) that states that _"everything is related to everything else, but near things are more related than distant things"_. In other words points that are close to the prediction point will have a higher weight than far away points. 
+
+Some methods are deterministic, meaning you don't get a confidence interval whereas others are stochastic, considering the values $z_1, \dots, z_n$ to be realisations of random variables $Z_1, \dots, Z_n$.
 
 #### The application
 
@@ -521,13 +523,13 @@ We clearly see that the barriers prevent the high values located in the north-we
 
 # Kriging
 
-Kriging is another method used to perform spatial interpolation. As IDW it uses the  [second formula](#the-equation) $\widehat{Z_{s_0}} = \sum_{i = 1}^{n}\lambda_i Z_{S_i}$ to make predictions. The way the weights are defined is what makes this methods specific. Besides it is a stochastic method. The interpolated surface has a confidence interval. 
+Kriging is another method used to perform spatial interpolation. Unlike the previous one it is a stochastic one. A confidence interval is also computed with the prediction. 
 
-Before explaining the method some concepts must be defined: random field, stationarity and variogram.
+Before explaining the method, some concepts must be defined: random field, stationarity and variogram.
 
 #### Random field
 
-We consider each value $z_{s_1}, \dots, z_{s_n}$ to be observations of the random variables $Z_{s_1}, \dots, Z_{s_n}$. A random field, or random function, is simply a set of random variables. $Z_s = (Z_{s_1}, \dots, Z_{s_n})$ is a random function, or random field. $s$ represents a set of positions in space.
+We consider each value $z_{s_1}, \dots, z_{s_n}$ to be observations of the random variables $Z_{s_1}, \dots, Z_{s_n}$, this is what makes Kriging a stochastic method. A random field, or random function, is simply a set of random variables. $Z_s = (Z_{s_1}, \dots, Z_{s_n})$ is a random function, or random field. $s$ represents a set of positions in space.
 
 #### Stationarity
 
@@ -539,9 +541,9 @@ It states that the distribution of $Z_s$ is the same as the one of $Z_{s + h}$ w
 
 ##### The second-order stationarity
 
-It is weaker than the first one. $Z_s$ is said to be second-order stationary if the first 2 moments exists and are invariant by translation.
+It is weaker than the first one. $Z_s$ is said to be second-order stationary if the first 2 moments exist and are invariant by translation.
 
-Therefore for all $s$, $s'$ and $h$ we have:
+Therefore for all $s$, $s'$ 2 points in $R$ and $h$ a translation we have:
 
 $$
 \begin{gathered}
@@ -560,7 +562,10 @@ Cov(Z_s, Z_{s+h}) = C(h) \\
 \end{gathered}
 \end{equation}
 $$
-Strict stationarity does not imply second-order stationarity as the first 2 moments may not be defined. And of course weak stationary does not imply strict stationarity. $C(h)$ is called the auto-correlation function. It is different from the covariance function. 
+
+$C(h)$ is called the auto-correlation function. It is different from the covariance function.
+
+Strict stationarity does not imply second-order stationarity as the first 2 moments may not be defined. And of course weak stationary does not imply strict stationarity.  
 
 ##### The intrinsic stationarity
 
