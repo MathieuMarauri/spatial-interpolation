@@ -523,7 +523,7 @@ We clearly see that the barriers prevent the high values located in the north-we
 
 # Kriging
 
-Kriging is another method used to perform spatial interpolation. Unlike the previous one it is a stochastic one. A confidence interval is also computed with the prediction. 
+Kriging is another method used to perform spatial interpolation. Unlike the previous one it is stochastic (a confidence interval is also computed with the prediction).
 
 Before explaining the method, some concepts must be defined: random field, stationarity and variogram.
 
@@ -543,7 +543,7 @@ It states that the distribution of $Z_s$ is the same as the one of $Z_{s + h}$ w
 
 It is weaker than the first one. $Z_s$ is said to be second-order stationary if the first 2 moments exist and are invariant by translation.
 
-Therefore for all $s$, $s'$ 2 points in $R$ and $h$ a translation we have:
+Therefore for all $s$, $s'$ 2 points in the region $R$ and $h$ a translation we have:
 
 $$
 \begin{gathered}
@@ -565,7 +565,7 @@ $$
 
 $C(h)$ is called the auto-correlation function. It is different from the covariance function.
 
-Strict stationarity does not imply second-order stationarity as the first 2 moments may not be defined. And of course weak stationary does not imply strict stationarity.  
+Strict stationarity does not imply second-order stationarity as the first 2 moments may not be defined. And of course weak stationarity does not imply strict stationarity.  
 
 ##### The intrinsic stationarity
 
@@ -583,7 +583,7 @@ The condition is no longer on the random field $Z_s$ itself but rather on the in
 
 The second-order stationarity implies the intrinsic one. The reverse is not true. 
 
-Stationarity is more like a model assumption than an hypothesis to be tested. It is a way to simplify the model we use to describe our data.
+Stationarity is more like a model assumption than an hypothesis to be tested. It is a way to simplify the model we use to describe our data. As there is only one observation by random variables, stationarity assumptions are required to do any modelling. It is better to have as little assumptions as possible on the data structure to build our model, the ordinary Kriging relies on the least heavy one, that is the intrinsic stationarity. 
 
 #### Variogram
 
@@ -603,9 +603,21 @@ $$
 
 Now that some basic concepts have been defined, let's dive into the Kriging method. We will be defining ordinary Kriging.
 
-## How it works {#how-it-works}
+## How it works {#how-it-works-kriging}
 
-Recall that our goal is to find the weights of this equation $\widehat{Z_{s_0}} = \sum_{i = 1}^{n}\lambda_i Z_{s_i}$. We want to find the weights $\lambda_i$ required to predict the value $Z_{s_0}$. We want our estimate to be unbiased. In other words we want our predictions to be exact, on average. Mathematically we want: 
+The goal is to predict the $z$ value at a new location $s_0$. The Kriging formula is the same as the one used for the IDW method: $\widehat{Z_{s_0}} = \sum_{i = 1}^{n}\lambda_i Z_{s_i}$. We want to find the weights $\lambda_i$ required to predict the value $Z_{s_0}$.
+
+[@KrigeageThese] gives a very precise explanation of the different Kriging methods. The following is heavily inspired by her work. 
+
+The random field $Z_s$ can be divided into a constant term and a random one.
+
+$$
+Z_s = \mu + \delta_s
+$$
+
+The mean of the random field is quasi-constant, it is constant on the Kriging neighbourhood 
+
+The weights are defined so that the prediction is unbiased (on average the model does not make any error). This relation
 
 $$
 \begin{equation}
@@ -1020,7 +1032,7 @@ The exponential model has the lowest loss value. Nevertheless we want our semi-v
 
 ### The Kriging weights
 
-The Kriging weights, defined in the _how it works_ [section](#how-it-works), are computed for a new point $s_0$ with the following expression. $\mu$ is the Lagrange multiplier, coming from the optimisation resolution process.
+The Kriging weights, defined in the _how it works_ [section](#how-it-works-kriging), are computed for a new point $s_0$ with the following expression. $\mu$ is the Lagrange multiplier, coming from the optimisation resolution process.
 
 $$
 \begin{bmatrix}
