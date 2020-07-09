@@ -1254,13 +1254,15 @@ data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "pred_geor" = krig
 
 A detailed explanation of the Kriging weights definition is provided here. 
 
-The random field $Z_s$ can be divided into a constant term, $\mu$, and a random one, $\delta_s$.
+The random field $Z_s$ can be divided into a constant term, $m$, and a random one, $\delta_s$.
 
 $$
-Z_s = \mu + \delta_s
+Z_s = m + \delta_s
 $$
 
-The mean of the random field is quasi-constant, it is constant on the Kriging neighbourhood. The Kriging neighbourhood consists of the new location, $s_0$ in our case, and the points nearby used in the spatial interpolation. (Practically we act like all the sample points lie inside the Kriging neighbourhood which somehow seems to be a little bit like assuming a constant mean over the entire region $R$. Nevertheless this assumption, along with the intrinsic stationarity instead of the second-order one is what makes the difference between simple and ordinary Kriging).
+The mean of the random field is quasi-constant, it is constant on the Kriging neighbourhood. The Kriging neighbourhood consists of the new location, $s_0$ in our case, and the points nearby, used in the spatial interpolation. 
+
+(Practically we act like all the sample points lie inside the Kriging neighbourhood which somehow seems to be a little bit like assuming a constant mean over the entire region $R$. Nevertheless this assumption, along with the intrinsic stationarity instead of the second-order one is what makes the difference between simple and ordinary Kriging).
 
 The random term $\delta_s$ is 0 on average ($\mathbb{E}(\delta_s) = 0$) and is intrinsic stationary. 
 
@@ -1285,40 +1287,37 @@ The first condition simply states that $\widehat{Z_{s_0}} = a + \sum_{i = 1}^{n}
 
 Based on the intrinsic stationarity of the random term of the random field $Z_s$ we know that increments have a first and second moment. The existence of the first 2 moments for the prediction error $\widehat{Z_{s_0}} - Z_{s_0}$ is therefore not guaranteed. 
 
-We need to express the error as a linear combination of increments 
-
-
-
-
-
-
-
-The weights are defined so that the prediction is unbiased (on average the model does not make any error). This relation
+A linear combination of the form $\sum_{i=1}^{n} \omega_i Z_i$ has a first and second moment if and only if $\sum_{i=1}^{n} \omega_i=0$ (see [this document](https://informatique-mia.inrae.fr/sites/informatique-mia.inra.fr.biosp-d7/files/oldfiles/geostat_janv12.pdf) page 24, proposition 3, for a proof, in French).
 
 $$
 \begin{equation}
 \begin{split}
-& \mathbb{E}[\widehat{Z_{s_0}} - Z_{s_0}] = 0 \\
-\Leftrightarrow \ & \mathbb{E}\left[\sum_{i = 1}^{n}\lambda_i Z_{s_i} - Z_{s_0}\right] = 0 \\
-\Leftrightarrow \ & \sum_{i = 1}^{n}\lambda_i \mathbb{E}[Z_{s_i}] - \mathbb{E}[Z_{s_0}] = 0 \\
-\Leftrightarrow^* \ & \sum_{i = 1}^{n}\lambda_i m - m = 0 \\
-\Leftrightarrow \ & \sum_{i = 1}^{n}\lambda_i = 1
+\widehat{Z_{s_0}} - Z_{s_0} & = a + \sum_{i=1}^{n} \lambda_i Z_{s_i} - Z_{s_0} \\
+& = a + \sum_{i=1}^{n} \lambda_i \left(m + \delta_{s_i}\right) - m - \delta_{s_0} \\
+& = a + m\left(\sum_{i=1}^{n} \lambda_i - 1\right) + \sum_{i=1}^{n} \lambda_i \delta_{s_i} - \delta_{s_0} \\
+& = b + \sum_{i=1}^{n} \lambda_i \delta_{s_i} - \delta_{s_0}
+\end{split}
+\end{equation}
+$$
+If $\sum_{i=1}^{n} \lambda_i - 1 = 0$ then the error term is a linear combination of $\delta_s$ that is intrinsic stationary with weights that sum to 0. Therefore it has a first and second moment if and only if $\sum_{i=1}^{n} \lambda_i = 1$.
+
+#### Unbiasedness
+
+The model is unbiased if the expected value of the error is null. 
+
+$$
+\begin{equation}
+\begin{split}
+\mathbb{E}[\widehat{Z_{s_0}} - Z_{s_0}] = 0 & \Leftrightarrow \mathbb{E}\left[a + \sum_{i = 1}^{n}\lambda_i Z_{s_i} - Z_{s_0}\right] = 0 \\
+& \Leftrightarrow  a + m\left(\sum_{i = 1}^{n}\lambda_i - 1\right) = 0\\
+& \Leftrightarrow a = 0
 \end{split}
 \end{equation}
 $$
 
-To be able to go from line 3 to 4 we need the relation $\mathbb{E}[Z_{s_i}] = \mathbb{E}[Z_{s_0}] = m$. This is the second-order stationarity assumption that we suppose our random field $Z(s)$ fulfils. stationarity is more like a model assumption than an hypothesis to be tested. It is a way to simplify the model we wish to describe. 
+#### Optimality
 
-The difference between 2 unbiased estimators is their variance. By minimising the variance of the error term, the model is ensured to be the _Best Linear Unbiased Estimator_. The weights $\lambda_1, \dots, \lambda_n$ are defined by the following optimisation problem.
-
-
-
-
-
-
-## Kriging weights {#kriging-weights-calculus}
-
-The weights are the solution to the following optimisation problem.
+From the previous conditions we have that $\widehat{Z_{s_0}} = \sum_{i = 1}^{n}\lambda_i Z_{s_i}$ and $\sum_{i = 1}^{n}\lambda_i = 1$. To find the best linear unbiased predictor (BLUP) the variance of the error should be minimized. The weights $\lambda_i$ are therefore the solution to the following optimisation problem:
 
 $$
 \begin{equation}
@@ -1345,14 +1344,19 @@ V\left(\widehat{Z_{s_0}} - Z_{s_0}\right) & = \mathbb{E}\left[\left(\widehat{Z_{
 \end{equation}
 $$
 
+Since we are dealing with the expected value and since $m$ is a constant the equations are simplified by considering that $m = 0$ in $Z_s = m + \delta_s$. Taking $m \in \mathbb{R} \setminus \lbrace{0}\rbrace$ will only change the first equations as $m$ will be 
+
 And the term $\left(\sum_{i=1}^{n}\lambda_iZ_{s_i} - Z_{s_0} \right)^2$ can be expressed in the following way.
 
 $$
 \begin{equation}
 \begin{split}
-\left(\sum_{i=1}^{n}\lambda_iZ_{s_i} - Z_{s_0} \right)^2 & = \left(\sum_{i=1}^{n}\lambda_iZ_{s_i}\right)^2 - 2Z_{s_0}\sum_{i=1}^{n}\lambda_iZ_{s_i} + Z_{s_0}^2 \\
- & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_jZ_{s_i}Z_{s_j} - 2Z_{s_0}\sum_{i=1}^{n}\lambda_iZ_{s_i} + Z_{s_0}^2 \\
- & = \left(\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_jZ_{s_i}Z_{s_j} - \sum_{i=1}^{n}\lambda_iZ_{s_i}^2\right) - \left(\sum_{i=1}^{n}\lambda_iZ_{s_i}^2 - 2Z_{s_0}\sum_{i=1}^{n}\lambda_iZ_{s_i} + Z_{s_0}^2\right) \\
+\left(\sum_{i=1}^{n}\lambda_iZ_{s_i} - Z_{s_0} \right)^2 & = \left(\sum_{i=1}^{n}\lambda_i \left(m + \delta_{s_i}\right) - m - \delta_{s_0} \right)^2 \\
+& = \left(m \left(\sum_{i=1}^{n}\lambda_i - 1\right) + \sum_{i=1}^{n}\lambda_i \delta_{s_i}-  \delta_{s_0} \right)^2 \\
+& = \left(\sum_{i=1}^{n}\lambda_i \delta_{s_i}-  \delta_{s_0} \right)^2 \\
+& = \left(\sum_{i=1}^{n}\lambda_i\delta_{s_i}\right)^2 - 2\delta_{s_0}\sum_{i=1}^{n}\lambda_i\delta_{s_i} + \delta_{s_0}^2 \\
+ & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\delta_{s_i}\delta_{s_j} - 2\delta_{s_0}\sum_{i=1}^{n}\lambda_i\delta_{s_i} + \delta_{s_0}^2 \\
+ & = \left(\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\delta_{s_i}\delta_{s_j} - \sum_{i=1}^{n}\lambda_i\delta_{s_i}^2\right) - \left(\sum_{i=1}^{n}\lambda_i\delta_{s_i}^2 - 2\delta_{s_0}\sum_{i=1}^{n}\lambda_i\delta_{s_i} + \delta_{s_0}^2\right) \\
  & = A - B 
 \end{split}
 \end{equation}
@@ -1361,11 +1365,11 @@ $$
 $$
 \begin{equation}
 \begin{split}
-A & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_jZ_{s_i}Z_{s_j} - \sum_{i=1}^{n}\lambda_iZ_{s_i}^2 \\
- & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_jZ_{s_i}Z_{s_j} - \sum_{j=1}^{n}\lambda_j\sum_{i=1}^{n}\lambda_iZ_{s_i}^2 \\
- & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_jZ_{s_i}Z_{s_j} - \frac{1}{2}\sum_{j=1}^{n}\sum_{i=1}^{n}\lambda_j\lambda_iZ_{s_i}^2 - \frac{1}{2}\sum_{j=1}^{n}\sum_{i=1}^{n}\lambda_j\lambda_iZ_{s_j}^2 \\
- & = -\frac{1}{2}\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\left(-2Z_{s_i}Z_{s_j} + Z_{s_i}^2 + Z_{s_j}^2\right) \\
- & = -\frac{1}{2}\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\left(Z_{s_i} - Z_{s_j}\right)^2 \\
+A & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\delta_{s_i}\delta_{s_j} - \sum_{i=1}^{n}\lambda_i\delta_{s_i}^2 \\
+ & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\delta_{s_i}\delta_{s_j} - \sum_{j=1}^{n}\lambda_j\sum_{i=1}^{n}\lambda_i\delta_{s_i}^2 \\
+ & = \sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\delta_{s_i}\delta_{s_j} - \frac{1}{2}\sum_{j=1}^{n}\sum_{i=1}^{n}\lambda_j\lambda_i\delta_{s_i}^2 - \frac{1}{2}\sum_{j=1}^{n}\sum_{i=1}^{n}\lambda_j\lambda_i\delta_{s_j}^2 \\
+ & = -\frac{1}{2}\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\left(-2\delta_{s_i}\delta_{s_j} + \delta_{s_i}^2 + \delta_{s_j}^2\right) \\
+ & = -\frac{1}{2}\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\left(\delta_{s_i} - \delta_{s_j}\right)^2 \\
 \end{split}
 \end{equation}
 $$
@@ -1373,10 +1377,10 @@ $$
 $$
 \begin{equation}
 \begin{split}
-B & = \sum_{i=1}^{n}\lambda_iZ_{s_i}^2 - 2Z_{s_0}\sum_{i=1}^{n}\lambda_iZ_{s_i} + Z_{s_0}^2 \\
- & = \sum_{i=1}^{n}\lambda_iZ_{s_i}^2 - 2Z_{s_0}\sum_{i=1}^{n}\lambda_iZ_{s_i} + \sum_{i=1}^{n}\lambda_iZ_{s_0}^2 \\
- & = \sum_{i=1}^{n}\lambda_i\left(Z_{s_i}^2 - 2 Z_{s_0}Z_{s_i} + Z_{s_0}^2\right) \\
- & = \sum_{i=1}^{n}\lambda_i\left(Z_{s_0} - Z_{s_i}\right)^2
+B & = \sum_{i=1}^{n}\lambda_i\delta_{s_i}^2 - 2\delta_{s_0}\sum_{i=1}^{n}\lambda_i\delta_{s_i} + \delta_{s_0}^2 \\
+ & = \sum_{i=1}^{n}\lambda_i\delta_{s_i}^2 - 2\delta_{s_0}\sum_{i=1}^{n}\lambda_i\delta_{s_i} + \sum_{i=1}^{n}\lambda_i\delta_{s_0}^2 \\
+ & = \sum_{i=1}^{n}\lambda_i\left(\delta_{s_i}^2 - 2 \delta_{s_0}\delta_{s_i} + \delta_{s_0}^2\right) \\
+ & = \sum_{i=1}^{n}\lambda_i\left(\delta_{s_0} - \delta_{s_i}\right)^2
 \end{split}
 \end{equation}
 $$
@@ -1386,8 +1390,8 @@ Back to the expression of $V\left(\widehat{Z_{s_0}} - Z_{s_0}\right)$.
 $$
 \begin{equation}
 \begin{split}
-V\left(\widehat{Z_{s_0}} - Z_{s_0}\right) & = \mathbb{E}\left[-\frac{1}{2}\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\left(Z_{s_i} - Z_{s_j}\right)^2\right] + \mathbb{E}\left[\sum_{i=1}^{n}\lambda_i\left(Z_{s_0} - Z_{s_i}\right)^2\right] \\
- & = -\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\frac{1}{2}\mathbb{E}\left[\left(Z_{s_i} - Z_{s_j}\right)^2\right] + 2\sum_{i=1}^{n}\lambda_i\frac{1}{2}\mathbb{E}\left[\left(Z_{s_0} - Z_{s_i}\right)^2\right] \\
+V\left(\widehat{Z_{s_0}} - Z_{s_0}\right) & = \mathbb{E}\left[-\frac{1}{2}\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\left(\delta_{s_i} - \delta_{s_j}\right)^2\right] + \mathbb{E}\left[\sum_{i=1}^{n}\lambda_i\left(\delta_{s_0} - \delta_{s_i}\right)^2\right] \\
+ & = -\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\frac{1}{2}\mathbb{E}\left[\left(\delta_{s_i} - \delta_{s_j}\right)^2\right] + 2\sum_{i=1}^{n}\lambda_i\frac{1}{2}\mathbb{E}\left[\left(\delta_{s_0} - \delta_{s_i}\right)^2\right] \\
  & = -\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\gamma(s_i-s_j) + 2\sum_{i=1}^{n}\lambda_i\gamma(s_0-s_i)
 \end{split}
 \end{equation}
@@ -1399,7 +1403,7 @@ $$
 \mathcal{L}(\lambda_1, \dots, \lambda_n, \mu) = -\sum_{i=1}^{n}\sum_{j=1}^{n}\lambda_i\lambda_j\gamma(s_i-s_j) + 2\sum_{i=1}^{n}\lambda_i\gamma(s_0-s_i) - 2 \mu\left(\sum_{i=1}^{n} \lambda_i - 1\right)
 $$
 
-To find the weights that minimise the variance the Lagrangian function should be derived and the zeros found. 
+To find the weights that minimise the variance, the Lagrangian function should be derived and the zeros found. 
 
 $$
 \begin{equation}
@@ -1464,7 +1468,7 @@ $$
 \end{equation}
 $$
 
-Finally we have an expression for the weights.
+Finally we have an analytical expression for the weights.
 
 $$
 \begin{bmatrix}
