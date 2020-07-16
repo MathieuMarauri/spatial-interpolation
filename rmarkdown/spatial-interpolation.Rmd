@@ -1250,6 +1250,10 @@ errors <- sapply(
       fix.nugget = FALSE
     )
     # Kriging model
+    krige_control <- krige.control(
+      type.krige = "ok",
+      obj.model = vario_fit_spherical
+    )
     krige <- krige.conv(
       geodata = geodata,
       locations = sample_points[i, .(x, y)],
@@ -1278,19 +1282,19 @@ lapply(
     )
     # Define the parametric variogram
     vario_fit_spherical <- variofit(
-      vario = variogram, # the empirical variogram
-      cov.model = "spherical", # type of parametric model to adjust
-      fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
+      vario = variogram,
+      cov.model = "spherical",
+      fix.nugget = FALSE
     )
     vario_fit_gaussian <- variofit(
-      vario = variogram, # the empirical variogram
-      cov.model = "gaussian", # type of parametric model to adjust
-      fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
+      vario = variogram,
+      cov.model = "gaussian",
+      fix.nugget = FALSE
     )
     vario_fit_exponential <- variofit(
-      vario = variogram, # the empirical variogram
-      cov.model = "exponential", # type of parametric model to adjust
-      fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
+      vario = variogram,
+      cov.model = "exponential",
+      fix.nugget = FALSE
     )
     # Kriging model
     krige_control_spherical <- krige.control(
@@ -1331,13 +1335,19 @@ lapply(
   apply(2, mean)  %>% 
   data.frame(
     "Model" = c("Spherical", "Exponential", "Gaussian"),
-    "loo RMSE" = .,
+    "loo RMSE" = round(., 2),
     stringsAsFactors = FALSE,
     check.names = FALSE
   ) %>% 
   kable(align = c('c', 'r'), caption = "Leave-one-out mean squared error for the different Kriging models.", row.names = FALSE) %>% 
   kable_styling(full_width = FALSE)
 ```
+
+The exponential semi-variogram has the lowest RMSE. Remember that it also had the lowest loss value.
+
+## Co-Kriging
+
+
 
 # Annexes
 
