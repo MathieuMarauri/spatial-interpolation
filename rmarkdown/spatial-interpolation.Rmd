@@ -38,6 +38,7 @@ library("geoR") # Analysis of geo-statistical data
 library("ggplot2") # Data visualisations using the Grammar of Graphics
 library("ggrepel") # Text labels
 library("gstat") # Geo-statistical modelling
+library("kableExtra") # Table output formatting
 library("magrittr") # Pipe operators
 library("progress") # Progress bars
 library("stringi") # String manipulation
@@ -73,7 +74,7 @@ options(geoR.messages = FALSE)
 
 Spatial interpolation is the process of using points with known values to estimate values at other points ([QGIS definition](https://docs.qgis.org/3.10/en/docs/gentle_gis_introduction/spatial_analysis_interpolation.html)). When asked a question like _What is the air pollutants concentration over the entire city?_ and you only have access to measures at some observation stations, the answer is *spatial interpolation*. 
 
-There are many use cases, depth maps, concentration of mineral resources in the soil of a region, air pollution, elevation map, ...The common point is that the information of interest (altitude, concentration, ...) is known at sample points and one wants to know it at every point of a specific region. 
+There are many use cases, depth maps, concentration of mineral resources in the soil of a region, air pollution, elevation map .... The common point is that the information of interest (altitude, concentration ...) is known at sample points and one wants to know it at every point of a specific region. 
 
 There exists different solutions to this spatial interpolation problem. They often consist on taking a weighted average of the sample points. In this document 3 methods are presented:
 
@@ -533,39 +534,9 @@ We consider each value $z_{s_1}, \dots, z_{s_n}$ to be observations of the rando
 
 #### Stationarity
 
-There are 3 kinds of stationarity: the strict stationarity, the second-order stationarity and the intrinsic stationarity. Refer to [@stationarity] for more information. [This document](https://informatique-mia.inra.fr/sites/informatique-mia.inra.fr.biosp-d7/files/oldfiles/geostat_janv12.pdf) (in French) also provides a nice definition of the concepts that are used in Kriging.
+There are 3 kinds of stationarity: the strict stationarity, the second-order stationarity and the intrinsic stationarity. Refer to [@stationarity] for more information. [This document](https://informatique-mia.inra.fr/sites/informatique-mia.inra.fr.biosp-d7/files/oldfiles/geostat_janv12.pdf) (in French) also provides a nice definition of the concepts that are used in Kriging. 
 
-##### The strict stationarity
-
-It states that the distribution of $Z_s$ is the same as the one of $Z_{s + h}$ where $h$ indicates a translation. It does not require the first moment nor the second one to exist.
-
-##### The second-order stationarity
-
-It is weaker than the first one. $Z_s$ is said to be second-order stationary if the first 2 moments exist and are invariant by translation.
-
-Therefore for all $s$, $s'$ 2 points in the region $R$ and $h$ a translation we have:
-
-$$
-\begin{gathered}
-Cov(Z_s, Z_{s'}) = Cov(Z_{s+h}, Z_{s'+h}) \\
-\mathbb{E}[Z_s] = \mathbb{E}[Z_{s+h}]
-\end{gathered}
-$$
-
-In other words weak stationarity is defined by:
-
-$$
-\begin{equation}
-\begin{gathered}
-Cov(Z_s, Z_{s+h}) = C(h) \\
-\mathbb{E}[Z_s] = m
-\end{gathered}
-\end{equation}
-$$
-
-$C(h)$ is called the auto-correlation function. It is different from the covariance function.
-
-Strict stationarity does not imply second-order stationarity as the first 2 moments may not be defined. And of course weak stationarity does not imply strict stationarity.  
+The intrinsic stationarity is the only one used in ordinary Kriging so we will be defining only this one. Refer to [the Annexe](#kriging-math) for the definition of the other types of stationarity.
 
 ##### The intrinsic stationarity
 
@@ -638,6 +609,13 @@ $$
 \end{bmatrix}^{-1}
 \begin{bmatrix}\gamma(s_1-s_0) \\ \vdots \\ \gamma(s_n-s_0) \\ 1\end{bmatrix}
 $$
+## How to do Kriging? 
+
+Let's define the steps required to perform Kriging. From sample points, predicting the value at a new location requires 3 steps:
+
+1. Define the empirical semi-variogram based on the sample points,
+2. Fit a parametric semi-variogram on the empirical one,
+3. Use the semi-variogram to define the Kriging weights and predict new values at unknown locations.
 
 ## Step-by-step code for Ordinary Kriging
 
@@ -1145,9 +1123,9 @@ The resulting map is quite like the true data but in a smoother way. Kriging pro
 
 ## The geoR package {#kriging-functions}
 
-Of course in practice there is no need to write all the above code. 
+Of course in practice there is no need to write all the above code. Helper functions have been created so the focus is on the model and not on the how to. An example code is provided in the following.
 
-### Defining the semi-variogram with high-level functions
+#### Defining the semi-variogram with high-level functions
 
 ```{r variog-code, echo = TRUE, eval = FALSE}
 # Create a geodata object needed for all functions in the geoR package
@@ -1181,7 +1159,7 @@ vario_fit_spherical <- variofit(
 )
 ```
 
-### Computing the Kriging weights
+#### Computing the Kriging weights
 
 ```{r krigin-code, echo = TRUE, eval = FALSE}
 # Define the point where the predictions should be done
@@ -1199,7 +1177,7 @@ krige <- krige.conv(
 )
 ```
 
-Let's check that indeed both solution produce the same output. The test is performed with 
+Let's check that indeed both solution produce the same output. The results are quite similar in our case. Depending on the model you chose (exponential, gaussian, with a nugget or not) you might find slightly different results. 
 
 ```{r kriging-check}
 geodata <- as.geodata(sample_points)
@@ -1248,9 +1226,158 @@ data.table(simulated_grid[, c("x", "y")], "pred" = grid_pred, "pred_geor" = krig
   )
 ```
 
+## Evaluate model performance
+
+Of course true data is unknown in a real case scenario and it is impossible to assess the quality of our prediction by comparing it to the true map. Nevertheless it is possible to have an estimate of the error made by leave-one-out estimation. 
+
+The Kriging model is applied $n$ times, removing one sample point $s_i$ each time and making the prediction for $s_i$. Let's use the already defined Kriging model as an example.
+
+```{r kriging-perf, echo = TRUE}
+errors <- sapply(
+  X = seq_len(nrow(sample_points)),
+  FUN = function(i) {
+    geodata <- as.geodata(sample_points[-i])
+    # Define the empirical variogram
+    variogram <- variog(
+      geodata = geodata,
+      max.dist = 70,
+      breaks = quantile(point_variogram$distance, c(seq(0, .15, by = .05), seq(.2, 1, length.out = 9)))
+    )
+    # Define the parametric variogram
+    vario_fit_spherical <- variofit(
+      vario = variogram,
+      cov.model = "spherical",
+      fix.nugget = FALSE
+    )
+    # Kriging model
+    krige <- krige.conv(
+      geodata = geodata,
+      locations = sample_points[i, .(x, y)],
+      krige = krige_control
+    )
+    # Compute the error
+    error <- (krige$predict[1] - sample_points$z[i])^2
+    return(error)
+  }
+)
+error <- mean(errors)
+```
+
+The computed leave-one-out mean squared error is `r round(error, 2)`. Earlier we compared different semi-variogram based on their quality of fit, let's compare the Kriging models we would have obtained with the different semi-variograms.
+
+```{r kriging-perf2}
+lapply(
+  X = seq_len(nrow(sample_points)),
+  FUN = function(i) {
+    geodata <- as.geodata(sample_points[-i])
+    # Define the empirical variogram
+    variogram <- variog(
+      geodata = geodata,
+      max.dist = 70,
+      breaks = quantile(point_variogram$distance, c(seq(0, .15, by = .05), seq(.2, 1, length.out = 9)))
+    )
+    # Define the parametric variogram
+    vario_fit_spherical <- variofit(
+      vario = variogram, # the empirical variogram
+      cov.model = "spherical", # type of parametric model to adjust
+      fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
+    )
+    vario_fit_gaussian <- variofit(
+      vario = variogram, # the empirical variogram
+      cov.model = "gaussian", # type of parametric model to adjust
+      fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
+    )
+    vario_fit_exponential <- variofit(
+      vario = variogram, # the empirical variogram
+      cov.model = "exponential", # type of parametric model to adjust
+      fix.nugget = FALSE # should the nugget be a fixed parameter set with the argument nugget?
+    )
+    # Kriging model
+    krige_control_spherical <- krige.control(
+      type.krige = "ok",
+      obj.model = vario_fit_spherical
+    )
+    krige_spherical <- krige.conv(
+      geodata = geodata,
+      locations = sample_points[i, .(x, y)],
+      krige = krige_control_spherical
+    )
+    krige_control_exponential <- krige.control(
+      type.krige = "ok",
+      obj.model = vario_fit_exponential
+    )
+    krige_exponential <- krige.conv(
+      geodata = geodata,
+      locations = sample_points[i, .(x, y)],
+      krige = krige_control_exponential
+    )
+    krige_control_gaussian <- krige.control(
+      type.krige = "ok",
+      obj.model = vario_fit_gaussian
+    )
+    krige_gaussian <- krige.conv(
+      geodata = geodata,
+      locations = sample_points[i, .(x, y)],
+      krige = krige_control_gaussian
+    )
+    # Compute the error
+    error_spherical <- (krige_spherical$predict[1] - sample_points$z[i])^2
+    error_exponential <- (krige_exponential$predict[1] - sample_points$z[i])^2
+    error_gaussian <- (krige_gaussian$predict[1] - sample_points$z[i])^2
+    return(c("spherical" = error_spherical, "exponential" = error_exponential, "gaussian" = error_gaussian))
+  }
+) %>% 
+  do.call(rbind, .) %>% 
+  apply(2, mean)  %>% 
+  data.frame(
+    "Model" = c("Spherical", "Exponential", "Gaussian"),
+    "loo RMSE" = .,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  ) %>% 
+  kable(align = c('c', 'r'), caption = "Leave-one-out mean squared error for the different Kriging models.", row.names = FALSE) %>% 
+  kable_styling(full_width = FALSE)
+```
+
 # Annexes
 
 ## Kriging {#kriging-math}
+
+### Stationarity
+
+##### The strict stationarity
+
+It states that the distribution of $Z_s$ is the same as the one of $Z_{s + h}$ where $h$ indicates a translation. It does not require the first moment nor the second one to exist.
+
+##### The second-order stationarity
+
+It is weaker than the first one. $Z_s$ is said to be second-order stationary if the first 2 moments exist and are invariant by translation.
+
+Therefore for all $s$, $s'$ 2 points in the region $R$ and $h$ a translation we have:
+
+$$
+\begin{gathered}
+Cov(Z_s, Z_{s'}) = Cov(Z_{s+h}, Z_{s'+h}) \\
+\mathbb{E}[Z_s] = \mathbb{E}[Z_{s+h}]
+\end{gathered}
+$$
+
+In other words weak stationarity is defined by:
+
+$$
+\begin{equation}
+\begin{gathered}
+Cov(Z_s, Z_{s+h}) = C(h) \\
+\mathbb{E}[Z_s] = m
+\end{gathered}
+\end{equation}
+$$
+
+$C(h)$ is called the auto-correlation function. It is different from the covariance function.
+
+Strict stationarity does not imply second-order stationarity as the first 2 moments may not be defined. And of course weak stationarity does not imply strict stationarity.  
+
+### Kriging model
 
 A detailed explanation of the Kriging weights definition is provided here. 
 
