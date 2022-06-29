@@ -12,3 +12,6 @@ doc
 
 # test file
 src/test.R
+
+# Mac files 
+*.DS_Store

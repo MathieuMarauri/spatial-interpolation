@@ -23,6 +23,12 @@ MathJax.Hub.Config({
 });
 </script>
 
+<script>
+  $(document).ready(function() {
+    $('#TOC').parent().prepend('<div id="nav_logo"><img src="images/gold-unsplash.jpg"></div>');
+  });
+</script>
+
 <!-- https://groups.google.com/forum/#!topic/knitr/OMvT03PtGPM --> 
 
 ```{r initial_chunk, echo = FALSE, warning = FALSE, message = FALSE}
@@ -69,6 +75,8 @@ scale_fill_discrete <- function(...) ggplot2::scale_fill_viridis_d(..., option =
 
 options(geoR.messages = FALSE)
 ```
+
+
 
 # Introduction
 
@@ -518,10 +526,13 @@ data.table(simulated_grid[, c("x", "y")], "pred" = pred[, 1], "idw" = pred_idw$z
 
 We clearly see that the barriers prevent the high values located in the north-west part of the region to extend beyond the barriers. 
 
+
+<!--
 # Triangulated irregular network
 
 [Delaunay traingulation](http://www.cs.uu.nl/geobook/interpolation.pdf)
 
+-->
 # Kriging
 
 Kriging is another method used to perform spatial interpolation. Unlike the previous one it is stochastic (a confidence interval is also computed with the prediction).
